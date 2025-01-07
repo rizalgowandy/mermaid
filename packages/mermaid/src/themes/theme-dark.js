@@ -1,12 +1,11 @@
-import { invert, lighten, darken, rgba, adjust } from 'khroma';
-import { mkBorder } from './theme-helpers';
+import { adjust, darken, invert, isDark, lighten, rgba } from 'khroma';
+import { mkBorder } from './theme-helpers.js';
 
 class Theme {
   constructor() {
     this.background = '#333';
     this.primaryColor = '#1f2020';
     this.secondaryColor = lighten(this.primaryColor, 16);
-
     this.tertiaryColor = adjust(this.primaryColor, { h: -160 });
     this.primaryBorderColor = invert(this.background);
     this.secondaryBorderColor = mkBorder(this.secondaryColor, this.darkMode);
@@ -22,7 +21,7 @@ class Theme {
     this.mainContrastColor = 'lightgrey';
     this.darkTextColor = lighten(invert('#323D47'), 10);
     this.lineColor = 'calculated';
-    this.border1 = '#81B1DB';
+    this.border1 = '#ccc';
     this.border2 = rgba(255, 255, 255, 0.25);
     this.arrowheadColor = 'calculated';
     this.fontFamily = '"trebuchet ms", verdana, arial, sans-serif';
@@ -64,6 +63,7 @@ class Theme {
     this.sectionBkgColor = darken('#EAE8D9', 30);
     this.altSectionBkgColor = 'calculated';
     this.sectionBkgColor2 = '#EAE8D9';
+    this.excludeBkgColor = darken(this.sectionBkgColor, 10);
     this.taskBorderColor = rgba(255, 255, 255, 70);
     this.taskBkgColor = 'calculated';
     this.taskTextColor = 'calculated';
@@ -81,9 +81,15 @@ class Theme {
     this.todayLineColor = '#DB5757';
 
     /* C4 Context Diagram variables */
+    this.personBorder = this.primaryBorderColor;
+    this.personBkg = this.mainBkg;
 
-    this.personBorder = 'calculated';
-    this.personBkg = 'calculated';
+    /* Architecture Diagram variables */
+    this.archEdgeColor = 'calculated';
+    this.archEdgeArrowColor = 'calculated';
+    this.archEdgeWidth = '3';
+    this.archGroupBorderColor = this.primaryBorderColor;
+    this.archGroupBorderWidth = '2px';
 
     /* state colors */
     this.labelColor = 'calculated';
@@ -109,7 +115,7 @@ class Theme {
     this.actorBorder = this.border1;
     this.actorBkg = this.mainBkg;
     this.actorTextColor = this.mainContrastColor;
-    this.actorLineColor = this.mainContrastColor;
+    this.actorLineColor = this.actorBorder;
     this.signalColor = this.mainContrastColor;
     this.signalTextColor = this.mainContrastColor;
     this.labelBoxBkgColor = this.actorBkg;
@@ -132,6 +138,10 @@ class Theme {
     this.gridColor = this.mainContrastColor;
     this.doneTaskBkgColor = this.mainContrastColor;
     this.taskTextDarkColor = this.darkTextColor;
+
+    /* Architecture Diagram variables */
+    this.archEdgeColor = this.lineColor;
+    this.archEdgeArrowColor = this.lineColor;
 
     /* state colors */
     this.transitionColor = this.transitionColor || this.lineColor;
@@ -196,7 +206,14 @@ class Theme {
       this['cScalePeer' + i] = this['cScalePeer' + i] || lighten(this['cScale' + i], 10);
     }
 
-    // Setup teh label color for the set
+    for (let i = 0; i < 5; i++) {
+      this['surface' + i] =
+        this['surface' + i] || adjust(this.mainBkg, { h: 30, s: -30, l: -(-10 + i * 4) });
+      this['surfacePeer' + i] =
+        this['surfacePeer' + i] || adjust(this.mainBkg, { h: 30, s: -30, l: -(-7 + i * 4) });
+    }
+
+    // Setup the label color for the set
     this.scaleLabelColor = this.scaleLabelColor || (this.darkMode ? 'black' : this.labelTextColor);
 
     for (let i = 0; i < this.THEME_COLOR_LIMIT; i++) {
@@ -215,7 +232,60 @@ class Theme {
     this.pieLegendTextColor = this.pieLegendTextColor || this.taskTextDarkColor;
     this.pieStrokeColor = this.pieStrokeColor || 'black';
     this.pieStrokeWidth = this.pieStrokeWidth || '2px';
+    this.pieOuterStrokeWidth = this.pieOuterStrokeWidth || '2px';
+    this.pieOuterStrokeColor = this.pieOuterStrokeColor || 'black';
     this.pieOpacity = this.pieOpacity || '0.7';
+
+    /* quadrant-graph */
+    this.quadrant1Fill = this.quadrant1Fill || this.primaryColor;
+    this.quadrant2Fill = this.quadrant2Fill || adjust(this.primaryColor, { r: 5, g: 5, b: 5 });
+    this.quadrant3Fill = this.quadrant3Fill || adjust(this.primaryColor, { r: 10, g: 10, b: 10 });
+    this.quadrant4Fill = this.quadrant4Fill || adjust(this.primaryColor, { r: 15, g: 15, b: 15 });
+    this.quadrant1TextFill = this.quadrant1TextFill || this.primaryTextColor;
+    this.quadrant2TextFill =
+      this.quadrant2TextFill || adjust(this.primaryTextColor, { r: -5, g: -5, b: -5 });
+    this.quadrant3TextFill =
+      this.quadrant3TextFill || adjust(this.primaryTextColor, { r: -10, g: -10, b: -10 });
+    this.quadrant4TextFill =
+      this.quadrant4TextFill || adjust(this.primaryTextColor, { r: -15, g: -15, b: -15 });
+    this.quadrantPointFill =
+      this.quadrantPointFill || isDark(this.quadrant1Fill)
+        ? lighten(this.quadrant1Fill)
+        : darken(this.quadrant1Fill);
+    this.quadrantPointTextFill = this.quadrantPointTextFill || this.primaryTextColor;
+    this.quadrantXAxisTextFill = this.quadrantXAxisTextFill || this.primaryTextColor;
+    this.quadrantYAxisTextFill = this.quadrantYAxisTextFill || this.primaryTextColor;
+    this.quadrantInternalBorderStrokeFill =
+      this.quadrantInternalBorderStrokeFill || this.primaryBorderColor;
+    this.quadrantExternalBorderStrokeFill =
+      this.quadrantExternalBorderStrokeFill || this.primaryBorderColor;
+    this.quadrantTitleFill = this.quadrantTitleFill || this.primaryTextColor;
+
+    /* xychart */
+    this.xyChart = {
+      backgroundColor: this.xyChart?.backgroundColor || this.background,
+      titleColor: this.xyChart?.titleColor || this.primaryTextColor,
+      xAxisTitleColor: this.xyChart?.xAxisTitleColor || this.primaryTextColor,
+      xAxisLabelColor: this.xyChart?.xAxisLabelColor || this.primaryTextColor,
+      xAxisTickColor: this.xyChart?.xAxisTickColor || this.primaryTextColor,
+      xAxisLineColor: this.xyChart?.xAxisLineColor || this.primaryTextColor,
+      yAxisTitleColor: this.xyChart?.yAxisTitleColor || this.primaryTextColor,
+      yAxisLabelColor: this.xyChart?.yAxisLabelColor || this.primaryTextColor,
+      yAxisTickColor: this.xyChart?.yAxisTickColor || this.primaryTextColor,
+      yAxisLineColor: this.xyChart?.yAxisLineColor || this.primaryTextColor,
+      plotColorPalette:
+        this.xyChart?.plotColorPalette ||
+        '#3498db,#2ecc71,#e74c3c,#f1c40f,#bdc3c7,#ffffff,#34495e,#9b59b6,#1abc9c,#e67e22',
+    };
+
+    this.packet = {
+      startByteColor: this.primaryTextColor,
+      endByteColor: this.primaryTextColor,
+      labelColor: this.primaryTextColor,
+      titleColor: this.primaryTextColor,
+      blockStrokeColor: this.primaryTextColor,
+      blockFillColor: this.background,
+    };
 
     /* class */
     this.classText = this.primaryTextColor;
@@ -223,7 +293,7 @@ class Theme {
     /* requirement-diagram */
     this.requirementBackground = this.requirementBackground || this.primaryColor;
     this.requirementBorderColor = this.requirementBorderColor || this.primaryBorderColor;
-    this.requirementBorderSize = this.requirementBorderSize || this.primaryBorderColor;
+    this.requirementBorderSize = this.requirementBorderSize || '1';
     this.requirementTextColor = this.requirementTextColor || this.primaryTextColor;
     this.relationColor = this.relationColor || this.lineColor;
     this.relationLabelBackground =
@@ -248,6 +318,14 @@ class Theme {
     this.gitInv5 = this.gitInv5 || invert(this.git5);
     this.gitInv6 = this.gitInv6 || invert(this.git6);
     this.gitInv7 = this.gitInv7 || invert(this.git7);
+    this.gitBranchLabel0 = this.gitBranchLabel0 || invert(this.labelTextColor);
+    this.gitBranchLabel1 = this.gitBranchLabel1 || this.labelTextColor;
+    this.gitBranchLabel2 = this.gitBranchLabel2 || this.labelTextColor;
+    this.gitBranchLabel3 = this.gitBranchLabel3 || invert(this.labelTextColor);
+    this.gitBranchLabel4 = this.gitBranchLabel4 || this.labelTextColor;
+    this.gitBranchLabel5 = this.gitBranchLabel5 || this.labelTextColor;
+    this.gitBranchLabel6 = this.gitBranchLabel6 || this.labelTextColor;
+    this.gitBranchLabel7 = this.gitBranchLabel7 || this.labelTextColor;
 
     this.tagLabelColor = this.tagLabelColor || this.primaryTextColor;
     this.tagLabelBackground = this.tagLabelBackground || this.primaryColor;
@@ -265,6 +343,8 @@ class Theme {
     this.attributeBackgroundColorEven =
       this.attributeBackgroundColorEven || lighten(this.background, 2);
     /* -------------------------------------------------- */
+
+    this.nodeBorder = this.nodeBorder || '#999';
   }
   calculate(overrides) {
     if (typeof overrides !== 'object') {

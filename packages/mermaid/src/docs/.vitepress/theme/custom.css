@@ -1,3 +1,6 @@
+@import 'font-awesome/css/font-awesome.min.css';
+@import '@mdi/font/css/materialdesignicons.min.css';
+
 :root {
   --vp-c-brand: #ff3670;
   --vp-c-brand-light: #ff5e8c;

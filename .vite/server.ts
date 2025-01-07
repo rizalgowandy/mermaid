@@ -1,14 +1,7 @@
-import express, { NextFunction, Request, Response } from 'express';
+import express from 'express';
+import cors from 'cors';
 import { createServer as createViteServer } from 'vite';
-// import { getBuildConfig } from './build';
-
-const cors = (req: Request, res: Response, next: NextFunction) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
-
-  next();
-};
+import { packageOptions } from '../.build/common.js';
 
 async function createServer() {
   const app = express();
@@ -16,22 +9,23 @@ async function createServer() {
   // Create Vite server in middleware mode
   const vite = await createViteServer({
     configFile: './vite.config.ts',
+    mode: 'production',
     server: { middlewareMode: true },
-    appType: 'custom', // don't include Vite's default HTML handling middlewares
+    appType: 'custom', // don't include Vite's default HTML handling middleware
   });
 
-  app.use(cors);
-  app.use(express.static('./packages/mermaid/dist'));
-  app.use(express.static('./packages/mermaid-example-diagram/dist'));
-  app.use(express.static('./packages/mermaid-mindmap/dist'));
+  app.use(cors());
+  for (const { packageName } of Object.values(packageOptions)) {
+    app.use(express.static(`./packages/${packageName}/dist`));
+  }
   app.use(vite.middlewares);
   app.use(express.static('demos'));
   app.use(express.static('cypress/platform'));
 
   app.listen(9000, () => {
+    // eslint-disable-next-line no-console
     console.log(`Listening on http://localhost:9000`);
   });
 }
 
-// build(getBuildConfig({ minify: false, watch: true }));
-createServer();
+void createServer();

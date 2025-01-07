@@ -1,9 +1,14 @@
-import { detectType } from './detectType';
-import { getDiagram, registerDiagram } from './diagramAPI';
-import { addDiagrams } from './diagram-orchestration';
-import { DiagramDetector } from './types';
+import { detectType } from './detectType.js';
+import { getDiagram, registerDiagram } from './diagramAPI.js';
+import { addDiagrams } from './diagram-orchestration.js';
+import type { DiagramDetector } from './types.js';
+import { Diagram } from '../Diagram.js';
+import { it, describe, expect, beforeAll } from 'vitest';
 
 addDiagrams();
+beforeAll(async () => {
+  await Diagram.fromText('sequenceDiagram');
+});
 
 describe('DiagramAPI', () => {
   it('should return default diagrams', () => {
@@ -11,23 +16,35 @@ describe('DiagramAPI', () => {
   });
 
   it('should throw error if diagram is not defined', () => {
-    expect(() => getDiagram('loki')).toThrow();
+    expect(() => getDiagram('loki')).toThrowErrorMatchingInlineSnapshot(
+      `[Error: Diagram loki not found.]`
+    );
   });
 
   it('should handle diagram registrations', () => {
-    expect(() => getDiagram('loki')).toThrow();
-    expect(() => detectType('loki diagram')).toThrow(
-      'No diagram type detected for text: loki diagram'
+    expect(() => getDiagram('loki')).toThrowErrorMatchingInlineSnapshot(
+      `[Error: Diagram loki not found.]`
+    );
+    expect(() => detectType('loki diagram')).toThrowErrorMatchingInlineSnapshot(
+      `[UnknownDiagramError: No diagram type detected matching given configuration for text: loki diagram]`
     );
     const detector: DiagramDetector = (str: string) => {
-      return str.match('loki') !== null;
+      return /loki/.exec(str) !== null;
     };
     registerDiagram(
       'loki',
       {
         db: {},
-        parser: {},
-        renderer: {},
+        parser: {
+          parse: (_text) => {
+            return;
+          },
+        },
+        renderer: {
+          draw: () => {
+            // no-op
+          },
+        },
         styles: {},
       },
       detector

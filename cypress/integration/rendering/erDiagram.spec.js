@@ -1,4 +1,4 @@
-import { imgSnapshotTest, renderGraph } from '../../helpers/util';
+import { imgSnapshotTest, renderGraph } from '../../helpers/util.ts';
 
 describe('Entity Relationship Diagram', () => {
   it('should render a simple ER diagram', () => {
@@ -10,7 +10,6 @@ describe('Entity Relationship Diagram', () => {
       `,
       { logLevel: 1 }
     );
-    cy.get('svg');
   });
 
   it('should render an ER diagram with a recursive relationship', () => {
@@ -23,7 +22,6 @@ describe('Entity Relationship Diagram', () => {
       `,
       { logLevel: 1 }
     );
-    cy.get('svg');
   });
 
   it('should render an ER diagram with multiple relationships between the same two entities', () => {
@@ -35,7 +33,6 @@ describe('Entity Relationship Diagram', () => {
       `,
       { logLevel: 1 }
     );
-    cy.get('svg');
   });
 
   it('should render a cyclical ER diagram', () => {
@@ -48,7 +45,6 @@ describe('Entity Relationship Diagram', () => {
       `,
       { logLevel: 1 }
     );
-    cy.get('svg');
   });
 
   it('should render a not-so-simple ER diagram', () => {
@@ -66,7 +62,6 @@ describe('Entity Relationship Diagram', () => {
       `,
       { logLevel: 1 }
     );
-    cy.get('svg');
   });
 
   it('should render multiple ER diagrams', () => {
@@ -85,7 +80,6 @@ describe('Entity Relationship Diagram', () => {
       ],
       { logLevel: 1 }
     );
-    cy.get('svg');
   });
 
   it('should render an ER diagram with blank or empty labels', () => {
@@ -98,7 +92,6 @@ describe('Entity Relationship Diagram', () => {
       `,
       { logLevel: 1 }
     );
-    cy.get('svg');
   });
 
   it('should render an ER diagrams when useMaxWidth is true (default)', () => {
@@ -151,7 +144,6 @@ describe('Entity Relationship Diagram', () => {
       `,
       { er: { useMaxWidth: false } }
     );
-    cy.get('svg');
   });
 
   it('should render entities with and without attributes', () => {
@@ -164,7 +156,6 @@ describe('Entity Relationship Diagram', () => {
       `,
       { logLevel: 1 }
     );
-    cy.get('svg');
   });
 
   it('should render entities with generic and array attributes', () => {
@@ -179,7 +170,19 @@ describe('Entity Relationship Diagram', () => {
       `,
       { logLevel: 1 }
     );
-    cy.get('svg');
+  });
+
+  it('should render entities with length in attributes type', () => {
+    renderGraph(
+      `
+    erDiagram
+        CLUSTER {
+          varchar(99) name
+          string(255) description
+        }
+      `,
+      { logLevel: 1 }
+    );
   });
 
   it('should render entities and attributes with big and small entity names', () => {
@@ -195,7 +198,26 @@ describe('Entity Relationship Diagram', () => {
       `,
       { logLevel: 1 }
     );
-    cy.get('svg');
+  });
+
+  it('should render entities with attributes that begin with asterisk', () => {
+    imgSnapshotTest(
+      `
+    erDiagram
+        BOOK {
+          int         *id
+          string      name
+          varchar(99) summary
+        }
+        BOOK }o..o{ STORE : soldBy
+        STORE {
+          int         *id
+          string      name
+          varchar(50) address
+        }
+        `,
+      { loglevel: 1 }
+    );
   });
 
   it('should render entities with keys', () => {
@@ -214,7 +236,6 @@ describe('Entity Relationship Diagram', () => {
       `,
       { logLevel: 1 }
     );
-    cy.get('svg');
   });
 
   it('should render entities with comments', () => {
@@ -233,7 +254,6 @@ describe('Entity Relationship Diagram', () => {
       `,
       { logLevel: 1 }
     );
-    cy.get('svg');
   });
 
   it('should render entities with keys and comments', () => {
@@ -253,7 +273,6 @@ describe('Entity Relationship Diagram', () => {
       `,
       { logLevel: 1 }
     );
-    cy.get('svg');
   });
 
   it('should render entities with aliases', () => {
@@ -271,7 +290,6 @@ describe('Entity Relationship Diagram', () => {
       `,
       { logLevel: 1 }
     );
-    cy.get('svg');
   });
 
   it('1433: should render a simple ER diagram with a title', () => {
@@ -284,6 +302,56 @@ CUSTOMER ||--o{ ORDER : places
 ORDER ||--|{ LINE-ITEM : contains
 `,
       {}
+    );
+  });
+
+  it('should render entities with entity name aliases', () => {
+    imgSnapshotTest(
+      `
+    erDiagram
+      p[Person] {
+        varchar(64) firstName
+        varchar(64) lastName
+      }
+      c["Customer Account"] {
+        varchar(128) email
+      }
+      p ||--o| c : has
+      `,
+      { logLevel: 1 }
+    );
+  });
+
+  it('should render relationship labels with line breaks', () => {
+    imgSnapshotTest(
+      `
+    erDiagram
+      p[Person] {
+          string firstName
+          string lastName
+      }
+      a["Customer Account"] {
+          string email
+      }
+
+      b["Customer Account Secondary"] {
+        string email
+      }
+      
+      c["Customer Account Tertiary"] {
+        string email
+      }
+      
+      d["Customer Account Nth"] {
+        string email
+      }
+
+      p ||--o| a : "has<br />one"
+      p ||--o| b : "has<br />one<br />two"
+      p ||--o| c : "has<br />one<br/>two<br />three"
+      p ||--o| d : "has<br />one<br />two<br/>three<br />...<br/>Nth"
+      `,
+      { logLevel: 1 }
     );
   });
 });

@@ -1,11 +1,10 @@
 import { select } from 'd3';
 import { layout as dagreLayout } from 'dagre-d3-es/src/dagre/index.js';
 import * as graphlib from 'dagre-d3-es/src/graphlib/index.js';
-import { log } from '../../logger';
-import svgDraw from './svgDraw';
-import { configureSvgSize } from '../../setupGraphViewbox';
-import { getConfig } from '../../config';
-import addSVGAccessibilityFields from '../../accessibility';
+import { log } from '../../logger.js';
+import svgDraw from './svgDraw.js';
+import { configureSvgSize } from '../../setupGraphViewbox.js';
+import { getConfig } from '../../diagram-api/diagramAPI.js';
 
 let idCache = {};
 const padding = 20;
@@ -142,8 +141,6 @@ const insertMarkers = function (elem) {
 export const draw = function (text, id, _version, diagObj) {
   const conf = getConfig().class;
   idCache = {};
-  // diagObj.db.clear();
-  // diagObj.parser.parse(text);
 
   log.info('Rendering diagram ' + text);
 
@@ -178,10 +175,10 @@ export const draw = function (text, id, _version, diagObj) {
   });
 
   const classes = diagObj.db.getClasses();
-  const keys = Object.keys(classes);
+  const keys = [...classes.keys()];
 
   for (const key of keys) {
-    const classDef = classes[key];
+    const classDef = classes.get(key);
     const node = svgDraw.drawClass(diagram, classDef, conf, diagObj);
     idCache[node.id] = node;
 
@@ -196,6 +193,7 @@ export const draw = function (text, id, _version, diagObj) {
   const relations = diagObj.db.getRelations();
   relations.forEach(function (relation) {
     log.info(
+      // cspell:ignore tjoho
       'tjoho' + getGraphId(relation.id1) + getGraphId(relation.id2) + JSON.stringify(relation)
     );
     g.setEdge(
@@ -218,7 +216,7 @@ export const draw = function (text, id, _version, diagObj) {
     // metadata about the node. In this case we're going to add labels to each of
     // our nodes.
     g.setNode(node.id, node);
-    if (note.class && note.class in classes) {
+    if (note.class && classes.has(note.class)) {
       g.setEdge(
         note.id,
         getGraphId(note.class),
@@ -272,7 +270,6 @@ export const draw = function (text, id, _version, diagObj) {
   const vBox = `${svgBounds.x - padding} ${svgBounds.y - padding} ${width} ${height}`;
   log.debug(`viewBox ${vBox}`);
   diagram.attr('viewBox', vBox);
-  addSVGAccessibilityFields(diagObj.db, diagram, id);
 };
 
 export default {

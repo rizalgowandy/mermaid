@@ -1,10 +1,18 @@
-// @ts-nocheck : TODO Fix ts errors
 import { sanitizeUrl } from '@braintree/sanitize-url';
+import type { BaseType, CurveFactory } from 'd3';
 import {
   curveBasis,
   curveBasisClosed,
   curveBasisOpen,
-  CurveFactory,
+  curveBumpX,
+  curveBumpY,
+  curveBundle,
+  curveCardinalClosed,
+  curveCardinalOpen,
+  curveCardinal,
+  curveCatmullRomClosed,
+  curveCatmullRomOpen,
+  curveCatmullRom,
   curveLinear,
   curveLinearClosed,
   curveMonotoneX,
@@ -15,19 +23,33 @@ import {
   curveStepBefore,
   select,
 } from 'd3';
-import common from './diagrams/common/common';
-import { configKeys } from './defaultConfig';
-import { log } from './logger';
-import { detectType } from './diagram-api/detectType';
-import assignWithDepth from './assignWithDepth';
-import { MermaidConfig } from './config.type';
-import memoize from 'lodash-es/memoize';
+import common from './diagrams/common/common.js';
+import { sanitizeDirective } from './utils/sanitizeDirective.js';
+import { log } from './logger.js';
+import { detectType } from './diagram-api/detectType.js';
+import assignWithDepth from './assignWithDepth.js';
+import type { MermaidConfig } from './config.type.js';
+import memoize from 'lodash-es/memoize.js';
+import merge from 'lodash-es/merge.js';
+import { directiveRegex } from './diagram-api/regexes.js';
+import type { D3Element, Point, TextDimensionConfig, TextDimensions } from './types.js';
+
+export const ZERO_WIDTH_SPACE = '\u200b';
 
 // Effectively an enum of the supported curve types, accessible by name
 const d3CurveTypes = {
   curveBasis: curveBasis,
   curveBasisClosed: curveBasisClosed,
   curveBasisOpen: curveBasisOpen,
+  curveBumpX: curveBumpX,
+  curveBumpY: curveBumpY,
+  curveBundle: curveBundle,
+  curveCardinalClosed: curveCardinalClosed,
+  curveCardinalOpen: curveCardinalOpen,
+  curveCardinal: curveCardinal,
+  curveCatmullRomClosed: curveCatmullRomClosed,
+  curveCatmullRomOpen: curveCatmullRomOpen,
+  curveCatmullRom: curveCatmullRom,
   curveLinear: curveLinear,
   curveLinearClosed: curveLinearClosed,
   curveMonotoneX: curveMonotoneX,
@@ -36,11 +58,10 @@ const d3CurveTypes = {
   curveStep: curveStep,
   curveStepAfter: curveStepAfter,
   curveStepBefore: curveStepBefore,
-};
-const directive = /%{2}{\s*(?:(\w+)\s*:|(\w+))\s*(?:(\w+)|((?:(?!}%{2}).|\r?\n)*))?\s*(?:}%{2})?/gi;
+} as const;
+
 const directiveWithoutOpen =
   /\s*(?:(\w+)(?=:):|(\w+))\s*(?:(\w+)|((?:(?!}%{2}).|\r?\n)*))?\s*(?:}%{2})?/gi;
-
 /**
  * Detects the init config object from the text
  *
@@ -75,35 +96,44 @@ const directiveWithoutOpen =
  * @param config - Optional mermaid configuration object.
  * @returns The json object representing the init passed to mermaid.initialize()
  */
-export const detectInit = function (text: string, config?: MermaidConfig): MermaidConfig {
+export const detectInit = function (
+  text: string,
+  config?: MermaidConfig
+): MermaidConfig | undefined {
   const inits = detectDirective(text, /(?:init\b)|(?:initialize\b)/);
-  let results = {};
+  let results: MermaidConfig & { config?: unknown } = {};
 
   if (Array.isArray(inits)) {
     const args = inits.map((init) => init.args);
-    directiveSanitizer(args);
-
+    sanitizeDirective(args);
     results = assignWithDepth(results, [...args]);
   } else {
-    results = inits.args;
-  }
-  if (results) {
-    let type = detectType(text, config);
-    ['config'].forEach((prop) => {
-      if (results[prop] !== undefined) {
-        if (type === 'flowchart-v2') {
-          type = 'flowchart';
-        }
-        results[type] = results[prop];
-        delete results[prop];
-      }
-    });
+    results = inits.args as MermaidConfig;
   }
 
-  // Todo: refactor this, these results are never used
+  if (!results) {
+    return;
+  }
+
+  let type = detectType(text, config);
+
+  // Move the `config` value to appropriate diagram type value
+  const prop = 'config';
+  if (results[prop] !== undefined) {
+    if (type === 'flowchart-v2') {
+      type = 'flowchart';
+    }
+    results[type as keyof MermaidConfig] = results[prop];
+    delete results[prop];
+  }
+
   return results;
 };
 
+interface Directive {
+  type?: string;
+  args?: unknown;
+}
 /**
  * Detects the directive from the text.
  *
@@ -129,8 +159,8 @@ export const detectInit = function (text: string, config?: MermaidConfig): Merma
  */
 export const detectDirective = function (
   text: string,
-  type: string | RegExp = null
-): { type?: string; args?: any } | { type?: string; args?: any }[] {
+  type: string | RegExp | null = null
+): Directive | Directive[] {
   try {
     const commentWithoutDirectives = new RegExp(
       `[%]{2}(?![{]${directiveWithoutOpen.source})(?=[}][%]{2}).*\n`,
@@ -140,35 +170,36 @@ export const detectDirective = function (
     log.debug(
       `Detecting diagram directive${type !== null ? ' type:' + type : ''} based on the text:${text}`
     );
-    let match;
-    const result = [];
-    while ((match = directive.exec(text)) !== null) {
+    let match: RegExpExecArray | null;
+    const result: Directive[] = [];
+    while ((match = directiveRegex.exec(text)) !== null) {
       // This is necessary to avoid infinite loops with zero-width matches
-      if (match.index === directive.lastIndex) {
-        directive.lastIndex++;
+      if (match.index === directiveRegex.lastIndex) {
+        directiveRegex.lastIndex++;
       }
-      if (
-        (match && !type) ||
-        (type && match[1] && match[1].match(type)) ||
-        (type && match[2] && match[2].match(type))
-      ) {
+      if ((match && !type) || (type && match[1]?.match(type)) || (type && match[2]?.match(type))) {
         const type = match[1] ? match[1] : match[2];
         const args = match[3] ? match[3].trim() : match[4] ? JSON.parse(match[4].trim()) : null;
         result.push({ type, args });
       }
     }
     if (result.length === 0) {
-      result.push({ type: text, args: null });
+      return { type: text, args: null };
     }
 
     return result.length === 1 ? result[0] : result;
   } catch (error) {
     log.error(
-      `ERROR: ${error.message} - Unable to parse directive
-      ${type !== null ? ' type:' + type : ''} based on the text:${text}`
+      `ERROR: ${
+        (error as Error).message
+      } - Unable to parse directive type: '${type}' based on the text: '${text}'`
     );
-    return { type: null, args: null };
+    return { type: undefined, args: null };
   }
+};
+
+export const removeDirectives = function (text: string): string {
+  return text.replace(directiveRegex, '');
 };
 
 /**
@@ -194,12 +225,17 @@ export const isSubstringInArray = function (str: string, arr: string[]): number 
  * @param defaultCurve - The default curve to return
  * @returns The curve factory to use
  */
-export function interpolateToCurve(interpolate?: string, defaultCurve: CurveFactory): CurveFactory {
+export function interpolateToCurve(
+  interpolate: string | undefined,
+  defaultCurve: CurveFactory
+): CurveFactory {
   if (!interpolate) {
     return defaultCurve;
   }
   const curveName = `curve${interpolate.charAt(0).toUpperCase() + interpolate.slice(1)}`;
-  return d3CurveTypes[curveName] || defaultCurve;
+
+  // @ts-ignore TODO: Fix issue with curve type
+  return d3CurveTypes[curveName as keyof typeof d3CurveTypes] ?? defaultCurve;
 }
 
 /**
@@ -209,16 +245,18 @@ export function interpolateToCurve(interpolate?: string, defaultCurve: CurveFact
  * @param config - Configuration passed to MermaidJS
  * @returns The formatted URL or `undefined`.
  */
-export function formatUrl(linkStr: string, config: { securityLevel: string }): string | undefined {
+export function formatUrl(linkStr: string, config: MermaidConfig): string | undefined {
   const url = linkStr.trim();
 
-  if (url) {
-    if (config.securityLevel !== 'loose') {
-      return sanitizeUrl(url);
-    }
-
-    return url;
+  if (!url) {
+    return undefined;
   }
+
+  if (config.securityLevel !== 'loose') {
+    return sanitizeUrl(url);
+  }
+
+  return url;
 }
 
 /**
@@ -227,7 +265,7 @@ export function formatUrl(linkStr: string, config: { securityLevel: string }): s
  * @param functionName - A dot separated path to the function relative to the `window`
  * @param params - Parameters to pass to the function
  */
-export const runFunc = (functionName: string, ...params) => {
+export const runFunc = (functionName: string, ...params: unknown[]) => {
   const arrPaths = functionName.split('.');
 
   const len = arrPaths.length - 1;
@@ -235,22 +273,15 @@ export const runFunc = (functionName: string, ...params) => {
 
   let obj = window;
   for (let i = 0; i < len; i++) {
-    obj = obj[arrPaths[i]];
+    obj = obj[arrPaths[i] as keyof typeof obj];
     if (!obj) {
+      log.error(`Function name: ${functionName} not found in window`);
       return;
     }
   }
 
-  obj[fnName](...params);
+  obj[fnName as keyof typeof obj](...params);
 };
-
-/** A (x, y) point */
-interface Point {
-  /** The x value */
-  x: number;
-  /** The y value */
-  y: number;
-}
 
 /**
  * Finds the distance between two points using the Distance Formula
@@ -259,8 +290,11 @@ interface Point {
  * @param p2 - The second point
  * @returns The distance between the two points.
  */
-function distance(p1: Point, p2: Point): number {
-  return p1 && p2 ? Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2)) : 0;
+function distance(p1?: Point, p2?: Point): number {
+  if (!p1 || !p2) {
+    return 0;
+  }
+  return Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
 }
 
 /**
@@ -269,7 +303,7 @@ function distance(p1: Point, p2: Point): number {
  * @param points - List of points
  */
 function traverseEdge(points: Point[]): Point {
-  let prevPoint;
+  let prevPoint: Point | undefined;
   let totalDistance = 0;
 
   points.forEach((point) => {
@@ -278,35 +312,8 @@ function traverseEdge(points: Point[]): Point {
   });
 
   // Traverse half of total distance along points
-  let remainingDistance = totalDistance / 2;
-  let center = undefined;
-  prevPoint = undefined;
-  points.forEach((point) => {
-    if (prevPoint && !center) {
-      const vectorDistance = distance(point, prevPoint);
-      if (vectorDistance < remainingDistance) {
-        remainingDistance -= vectorDistance;
-      } else {
-        // The point is remainingDistance from prevPoint in the vector between prevPoint and point
-        // Calculate the coordinates
-        const distanceRatio = remainingDistance / vectorDistance;
-        if (distanceRatio <= 0) {
-          center = prevPoint;
-        }
-        if (distanceRatio >= 1) {
-          center = { x: point.x, y: point.y };
-        }
-        if (distanceRatio > 0 && distanceRatio < 1) {
-          center = {
-            x: (1 - distanceRatio) * prevPoint.x + distanceRatio * point.x,
-            y: (1 - distanceRatio) * prevPoint.y + distanceRatio * point.y,
-          };
-        }
-      }
-    }
-    prevPoint = point;
-  });
-  return center;
+  const remainingDistance = totalDistance / 2;
+  return calculatePoint(points, remainingDistance);
 }
 
 /**
@@ -319,20 +326,16 @@ function calcLabelPosition(points: Point[]): Point {
   return traverseEdge(points);
 }
 
-const calcCardinalityPosition = (isRelationTypePresent, points, initialPosition) => {
-  let prevPoint;
-  log.info(`our points ${JSON.stringify(points)}`);
-  if (points[0] !== initialPosition) {
-    points = points.reverse();
-  }
-  // Traverse only 25 total distance along points to find cardinality point
-  const distanceToCardinalityPoint = 25;
+export const roundNumber = (num: number, precision = 2) => {
+  const factor = Math.pow(10, precision);
+  return Math.round(num * factor) / factor;
+};
 
-  let remainingDistance = distanceToCardinalityPoint;
-  let center;
-  prevPoint = undefined;
-  points.forEach((point) => {
-    if (prevPoint && !center) {
+export const calculatePoint = (points: Point[], distanceToTraverse: number): Point => {
+  let prevPoint: Point | undefined = undefined;
+  let remainingDistance = distanceToTraverse;
+  for (const point of points) {
+    if (prevPoint) {
       const vectorDistance = distance(point, prevPoint);
       if (vectorDistance < remainingDistance) {
         remainingDistance -= vectorDistance;
@@ -341,27 +344,42 @@ const calcCardinalityPosition = (isRelationTypePresent, points, initialPosition)
         // Calculate the coordinates
         const distanceRatio = remainingDistance / vectorDistance;
         if (distanceRatio <= 0) {
-          center = prevPoint;
+          return prevPoint;
         }
         if (distanceRatio >= 1) {
-          center = { x: point.x, y: point.y };
+          return { x: point.x, y: point.y };
         }
         if (distanceRatio > 0 && distanceRatio < 1) {
-          center = {
-            x: (1 - distanceRatio) * prevPoint.x + distanceRatio * point.x,
-            y: (1 - distanceRatio) * prevPoint.y + distanceRatio * point.y,
+          return {
+            x: roundNumber((1 - distanceRatio) * prevPoint.x + distanceRatio * point.x, 5),
+            y: roundNumber((1 - distanceRatio) * prevPoint.y + distanceRatio * point.y, 5),
           };
         }
       }
     }
     prevPoint = point;
-  });
+  }
+  throw new Error('Could not find a suitable point for the given distance');
+};
+
+const calcCardinalityPosition = (
+  isRelationTypePresent: boolean,
+  points: Point[],
+  initialPosition: Point
+) => {
+  log.info(`our points ${JSON.stringify(points)}`);
+  if (points[0] !== initialPosition) {
+    points = points.reverse();
+  }
+  // Traverse only 25 total distance along points to find cardinality point
+  const distanceToCardinalityPoint = 25;
+  const center = calculatePoint(points, distanceToCardinalityPoint);
   // if relation is present (Arrows will be added), change cardinality point off-set distance (d)
   const d = isRelationTypePresent ? 10 : 5;
   //Calculate Angle for x and y axis
   const angle = Math.atan2(points[0].y - center.y, points[0].x - center.x);
   const cardinalityPosition = { x: 0, y: 0 };
-  //Calculation cardinality position using angle, center point on the line/curve but pendicular and with offset-distance
+  //Calculation cardinality position using angle, center point on the line/curve but perpendicular and with offset-distance
   cardinalityPosition.x = Math.sin(angle) * d + (points[0].x + center.x) / 2;
   cardinalityPosition.y = -Math.cos(angle) * d + (points[0].y + center.y) / 2;
   return cardinalityPosition;
@@ -380,71 +398,36 @@ function calcTerminalLabelPosition(
   position: 'start_left' | 'start_right' | 'end_left' | 'end_right',
   _points: Point[]
 ): Point {
-  // Todo looking to faster cloning method
-  let points = JSON.parse(JSON.stringify(_points));
-  let prevPoint;
+  const points = structuredClone(_points);
   log.info('our points', points);
   if (position !== 'start_left' && position !== 'start_right') {
-    points = points.reverse();
+    points.reverse();
   }
-
-  points.forEach((point) => {
-    prevPoint = point;
-  });
 
   // Traverse only 25 total distance along points to find cardinality point
   const distanceToCardinalityPoint = 25 + terminalMarkerSize;
+  const center = calculatePoint(points, distanceToCardinalityPoint);
 
-  let remainingDistance = distanceToCardinalityPoint;
-  let center;
-  prevPoint = undefined;
-  points.forEach((point) => {
-    if (prevPoint && !center) {
-      const vectorDistance = distance(point, prevPoint);
-      if (vectorDistance < remainingDistance) {
-        remainingDistance -= vectorDistance;
-      } else {
-        // The point is remainingDistance from prevPoint in the vector between prevPoint and point
-        // Calculate the coordinates
-        const distanceRatio = remainingDistance / vectorDistance;
-        if (distanceRatio <= 0) {
-          center = prevPoint;
-        }
-        if (distanceRatio >= 1) {
-          center = { x: point.x, y: point.y };
-        }
-        if (distanceRatio > 0 && distanceRatio < 1) {
-          center = {
-            x: (1 - distanceRatio) * prevPoint.x + distanceRatio * point.x,
-            y: (1 - distanceRatio) * prevPoint.y + distanceRatio * point.y,
-          };
-        }
-      }
-    }
-    prevPoint = point;
-  });
   // if relation is present (Arrows will be added), change cardinality point off-set distance (d)
   const d = 10 + terminalMarkerSize * 0.5;
   //Calculate Angle for x and y axis
   const angle = Math.atan2(points[0].y - center.y, points[0].x - center.x);
 
-  const cardinalityPosition = { x: 0, y: 0 };
+  const cardinalityPosition: Point = { x: 0, y: 0 };
+  //Calculation cardinality position using angle, center point on the line/curve but perpendicular and with offset-distance
 
-  //Calculation cardinality position using angle, center point on the line/curve but pendicular and with offset-distance
-
-  cardinalityPosition.x = Math.sin(angle) * d + (points[0].x + center.x) / 2;
-  cardinalityPosition.y = -Math.cos(angle) * d + (points[0].y + center.y) / 2;
   if (position === 'start_left') {
     cardinalityPosition.x = Math.sin(angle + Math.PI) * d + (points[0].x + center.x) / 2;
     cardinalityPosition.y = -Math.cos(angle + Math.PI) * d + (points[0].y + center.y) / 2;
-  }
-  if (position === 'end_right') {
+  } else if (position === 'end_right') {
     cardinalityPosition.x = Math.sin(angle - Math.PI) * d + (points[0].x + center.x) / 2 - 5;
     cardinalityPosition.y = -Math.cos(angle - Math.PI) * d + (points[0].y + center.y) / 2 - 5;
-  }
-  if (position === 'end_left') {
+  } else if (position === 'end_left') {
     cardinalityPosition.x = Math.sin(angle) * d + (points[0].x + center.x) / 2 - 5;
     cardinalityPosition.y = -Math.cos(angle) * d + (points[0].y + center.y) / 2 - 5;
+  } else {
+    cardinalityPosition.x = Math.sin(angle) * d + (points[0].x + center.x) / 2;
+    cardinalityPosition.y = -Math.cos(angle) * d + (points[0].y + center.y) / 2;
   }
   return cardinalityPosition;
 }
@@ -470,7 +453,7 @@ export function getStylesFromArray(arr: string[]): { style: string; labelStyle: 
     }
   }
 
-  return { style: style, labelStyle: labelStyle };
+  return { style, labelStyle };
 }
 
 let cnt = 0;
@@ -482,10 +465,10 @@ export const generateId = () => {
 /**
  * Generates a random hexadecimal id of the given length.
  *
- * @param length - Length of ID.
- * @returns The generated ID.
+ * @param length - Length of string.
+ * @returns The generated string.
  */
-function makeid(length: number): string {
+function makeRandomHex(length: number): string {
   let result = '';
   const characters = '0123456789abcdef';
   const charactersLength = characters.length;
@@ -495,8 +478,8 @@ function makeid(length: number): string {
   return result;
 }
 
-export const random = (options) => {
-  return makeid(options.length);
+export const random = (options: { length: number }) => {
+  return makeRandomHex(options.length);
 };
 
 export const getTextObj = function () {
@@ -512,6 +495,7 @@ export const getTextObj = function () {
     rx: 0,
     ry: 0,
     valign: undefined,
+    text: '',
   };
 };
 
@@ -540,14 +524,17 @@ export const drawSimpleText = function (
   // Remove and ignore br:s
   const nText = textData.text.replace(common.lineBreakRegex, ' ');
 
-  const textElem = elem.append('text');
+  const [, _fontSizePx] = parseFontSize(textData.fontSize);
+
+  const textElem = elem.append('text') as any;
   textElem.attr('x', textData.x);
   textElem.attr('y', textData.y);
   textElem.style('text-anchor', textData.anchor);
   textElem.style('font-family', textData.fontFamily);
-  textElem.style('font-size', textData.fontSize);
+  textElem.style('font-size', _fontSizePx);
   textElem.style('font-weight', textData.fontWeight);
   textElem.attr('fill', textData.fill);
+
   if (textData.class !== undefined) {
     textElem.attr('class', textData.class);
   }
@@ -567,9 +554,9 @@ interface WrapLabelConfig {
   joinWith: string;
 }
 
-export const wrapLabel: (label: string, maxWidth: string, config: WrapLabelConfig) => string =
+export const wrapLabel: (label: string, maxWidth: number, config: WrapLabelConfig) => string =
   memoize(
-    (label: string, maxWidth: string, config: WrapLabelConfig): string => {
+    (label: string, maxWidth: number, config: WrapLabelConfig): string => {
       if (!label) {
         return label;
       }
@@ -580,8 +567,8 @@ export const wrapLabel: (label: string, maxWidth: string, config: WrapLabelConfi
       if (common.lineBreakRegex.test(label)) {
         return label;
       }
-      const words = label.split(' ');
-      const completedLines = [];
+      const words = label.split(' ').filter(Boolean);
+      const completedLines: string[] = [];
       let nextLine = '';
       words.forEach((word, index) => {
         const wordLength = calculateTextWidth(`${word} `, config);
@@ -666,10 +653,6 @@ export function calculateTextHeight(
   text: Parameters<typeof calculateTextDimensions>[0],
   config: Parameters<typeof calculateTextDimensions>[1]
 ): ReturnType<typeof calculateTextDimensions>['height'] {
-  config = Object.assign(
-    { fontSize: 12, fontWeight: 400, fontFamily: 'Arial', margin: 15 },
-    config
-  );
   return calculateTextDimensions(text, config).height;
 }
 
@@ -685,20 +668,9 @@ export function calculateTextWidth(
   text: Parameters<typeof calculateTextDimensions>[0],
   config: Parameters<typeof calculateTextDimensions>[1]
 ): ReturnType<typeof calculateTextDimensions>['width'] {
-  config = Object.assign({ fontSize: 12, fontWeight: 400, fontFamily: 'Arial' }, config);
   return calculateTextDimensions(text, config).width;
 }
 
-interface TextDimensionConfig {
-  fontSize?: number;
-  fontWeight?: number;
-  fontFamily?: string;
-}
-interface TextDimensions {
-  width: number;
-  height: number;
-  lineHeight?: number;
-}
 /**
  * This calculates the dimensions of the given text, font size, font family, font weight, and
  * margins.
@@ -713,11 +685,12 @@ export const calculateTextDimensions: (
   config: TextDimensionConfig
 ) => TextDimensions = memoize(
   (text: string, config: TextDimensionConfig): TextDimensions => {
-    config = Object.assign({ fontSize: 12, fontWeight: 400, fontFamily: 'Arial' }, config);
-    const { fontSize, fontFamily, fontWeight } = config;
+    const { fontSize = 12, fontFamily = 'Arial', fontWeight = 400 } = config;
     if (!text) {
       return { width: 0, height: 0 };
     }
+
+    const [, _fontSizePx] = parseFontSize(fontSize);
 
     // We can't really know if the user supplied font family will render on the user agent;
     // thus, we'll take the max width between the user supplied font family, and a default
@@ -736,21 +709,26 @@ export const calculateTextDimensions: (
     const g = body.append('svg');
 
     for (const fontFamily of fontFamilies) {
-      let cheight = 0;
+      let cHeight = 0;
       const dim = { width: 0, height: 0, lineHeight: 0 };
       for (const line of lines) {
         const textObj = getTextObj();
-        textObj.text = line;
+        textObj.text = line || ZERO_WIDTH_SPACE;
+        // @ts-ignore TODO: Fix D3 types
         const textElem = drawSimpleText(g, textObj)
-          .style('font-size', fontSize)
+          // @ts-ignore TODO: Fix D3 types
+          .style('font-size', _fontSizePx)
           .style('font-weight', fontWeight)
           .style('font-family', fontFamily);
 
         const bBox = (textElem._groups || textElem)[0][0].getBBox();
+        if (bBox.width === 0 && bBox.height === 0) {
+          throw new Error('svg element not in render tree');
+        }
         dim.width = Math.round(Math.max(dim.width, bBox.width));
-        cheight = Math.round(bBox.height);
-        dim.height += cheight;
-        dim.lineHeight = Math.round(Math.max(dim.lineHeight, cheight));
+        cHeight = Math.round(bBox.height);
+        dim.height += cHeight;
+        dim.lineHeight = Math.round(Math.max(dim.lineHeight, cHeight));
       }
       dims.push(dim);
     }
@@ -771,25 +749,18 @@ export const calculateTextDimensions: (
   (text, config) => `${text}${config.fontSize}${config.fontWeight}${config.fontFamily}`
 );
 
-export const initIdGenerator = class iterator {
-  constructor(deterministic, seed) {
-    this.deterministic = deterministic;
+export class InitIDGenerator {
+  private count = 0;
+  public next: () => number;
+  constructor(deterministic = false, seed?: string) {
     // TODO: Seed is only used for length?
-    this.seed = seed;
-
+    // v11: Use the actual value of seed string to generate an initial value for count.
     this.count = seed ? seed.length : 0;
+    this.next = deterministic ? () => this.count++ : () => Date.now();
   }
+}
 
-  next() {
-    if (!this.deterministic) {
-      return Date.now();
-    }
-
-    return this.count++;
-  }
-};
-
-let decoder;
+let decoder: HTMLDivElement;
 
 /**
  * Decodes HTML, source: {@link https://github.com/shrpne/entity-decode/blob/v2.0.1/browser.js}
@@ -801,106 +772,23 @@ export const entityDecode = function (html: string): string {
   decoder = decoder || document.createElement('div');
   // Escape HTML before decoding for HTML Entities
   html = escape(html).replace(/%26/g, '&').replace(/%23/g, '#').replace(/%3B/g, ';');
-  // decoding
   decoder.innerHTML = html;
-  return unescape(decoder.textContent);
-};
 
-/**
- * Sanitizes directive objects
- *
- * @param args - Directive's JSON
- */
-export const directiveSanitizer = (args: any) => {
-  log.debug('directiveSanitizer called with', args);
-  if (typeof args === 'object') {
-    // check for array
-    if (args.length) {
-      args.forEach((arg) => directiveSanitizer(arg));
-    } else {
-      // This is an object
-      Object.keys(args).forEach((key) => {
-        log.debug('Checking key', key);
-        if (key.startsWith('__')) {
-          log.debug('sanitize deleting __ option', key);
-          delete args[key];
-        }
-
-        if (key.includes('proto')) {
-          log.debug('sanitize deleting proto option', key);
-          delete args[key];
-        }
-
-        if (key.includes('constr')) {
-          log.debug('sanitize deleting constr option', key);
-          delete args[key];
-        }
-
-        if (key.includes('themeCSS')) {
-          log.debug('sanitizing themeCss option');
-          args[key] = sanitizeCss(args[key]);
-        }
-        if (key.includes('fontFamily')) {
-          log.debug('sanitizing fontFamily option');
-          args[key] = sanitizeCss(args[key]);
-        }
-        if (key.includes('altFontFamily')) {
-          log.debug('sanitizing altFontFamily option');
-          args[key] = sanitizeCss(args[key]);
-        }
-        if (!configKeys.includes(key)) {
-          log.debug('sanitize deleting option', key);
-          delete args[key];
-        } else {
-          if (typeof args[key] === 'object') {
-            log.debug('sanitize deleting object', key);
-            directiveSanitizer(args[key]);
-          }
-        }
-      });
-    }
-  }
-  if (args.themeVariables) {
-    const kArr = Object.keys(args.themeVariables);
-    for (const k of kArr) {
-      const val = args.themeVariables[k];
-      if (val && val.match && !val.match(/^[\d "#%(),.;A-Za-z]+$/)) {
-        args.themeVariables[k] = '';
-      }
-    }
-  }
-  log.debug('After sanitization', args);
-};
-export const sanitizeCss = (str) => {
-  let startCnt = 0;
-  let endCnt = 0;
-
-  for (const element of str) {
-    if (startCnt < endCnt) {
-      return '{ /* ERROR: Unbalanced CSS */ }';
-    }
-    if (element === '{') {
-      startCnt++;
-    } else if (element === '}') {
-      endCnt++;
-    }
-  }
-  if (startCnt !== endCnt) {
-    return '{ /* ERROR: Unbalanced CSS */ }';
-  }
-  // Todo add more checks here
-  return str;
+  return unescape(decoder.textContent!);
 };
 
 export interface DetailedError {
   str: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   hash: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   error?: any;
   message?: string;
 }
 
 /** @param error - The error to check */
-export function isDetailedError(error: unknown): error is DetailedError {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function isDetailedError(error: any): error is DetailedError {
   return 'str' in error;
 }
 
@@ -913,7 +801,7 @@ export function getErrorMessage(error: unknown): string {
 }
 
 /**
- * Appends <text> element with the given title, centered.
+ * Appends <text> element with the given title and css class.
  *
  * @param parent - d3 svg object to append title to
  * @param cssClass - CSS class for the <text> element containing the title
@@ -921,7 +809,7 @@ export function getErrorMessage(error: unknown): string {
  * @param title - The title. If empty, returns immediately.
  */
 export const insertTitle = (
-  parent,
+  parent: D3Element,
   cssClass: string,
   titleTopMargin: number,
   title?: string
@@ -929,14 +817,48 @@ export const insertTitle = (
   if (!title) {
     return;
   }
-  const bounds = parent.node().getBBox();
+  const bounds = parent.node()?.getBBox();
+  if (!bounds) {
+    return;
+  }
   parent
     .append('text')
     .text(title)
+    .attr('text-anchor', 'middle')
     .attr('x', bounds.x + bounds.width / 2)
     .attr('y', -titleTopMargin)
     .attr('class', cssClass);
 };
+
+/**
+ * Parses a raw fontSize configuration value into a number and string value.
+ *
+ * @param fontSize - a string or number font size configuration value
+ *
+ * @returns parsed number and string style font size values, or nulls if a number value can't
+ * be parsed from an input string.
+ */
+export const parseFontSize = (fontSize: string | number | undefined): [number?, string?] => {
+  // if the font size is a number, assume a px string representation
+  if (typeof fontSize === 'number') {
+    return [fontSize, fontSize + 'px'];
+  }
+
+  const fontSizeNumber = parseInt(fontSize ?? '', 10);
+  if (Number.isNaN(fontSizeNumber)) {
+    // if a number value can't be parsed, return null for both values
+    return [undefined, undefined];
+  } else if (fontSize === String(fontSizeNumber)) {
+    // if a string input doesn't contain any units, assume px units
+    return [fontSizeNumber, fontSize + 'px'];
+  } else {
+    return [fontSizeNumber, fontSize];
+  }
+};
+
+export function cleanAndMerge<T>(defaultData: T, data?: Partial<T>): T {
+  return merge({}, defaultData, data);
+}
 
 export default {
   assignWithDepth,
@@ -944,6 +866,7 @@ export default {
   calculateTextHeight,
   calculateTextWidth,
   calculateTextDimensions,
+  cleanAndMerge,
   detectInit,
   detectDirective,
   isSubstringInArray,
@@ -957,8 +880,80 @@ export default {
   random,
   runFunc,
   entityDecode,
-  initIdGenerator: initIdGenerator,
-  directiveSanitizer,
-  sanitizeCss,
   insertTitle,
+  parseFontSize,
+  InitIDGenerator,
 };
+
+/**
+ * @param  text - text to be encoded
+ * @returns
+ */
+export const encodeEntities = function (text: string): string {
+  let txt = text;
+
+  txt = txt.replace(/style.*:\S*#.*;/g, function (s): string {
+    return s.substring(0, s.length - 1);
+  });
+  txt = txt.replace(/classDef.*:\S*#.*;/g, function (s): string {
+    return s.substring(0, s.length - 1);
+  });
+
+  txt = txt.replace(/#\w+;/g, function (s) {
+    const innerTxt = s.substring(1, s.length - 1);
+
+    const isInt = /^\+?\d+$/.test(innerTxt);
+    if (isInt) {
+      return 'ﬂ°°' + innerTxt + '¶ß';
+    } else {
+      return 'ﬂ°' + innerTxt + '¶ß';
+    }
+  });
+
+  return txt;
+};
+
+/**
+ *
+ * @param  text - text to be decoded
+ * @returns
+ */
+export const decodeEntities = function (text: string): string {
+  return text.replace(/ﬂ°°/g, '&#').replace(/ﬂ°/g, '&').replace(/¶ß/g, ';');
+};
+
+export const isString = (value: unknown): value is string => {
+  return typeof value === 'string';
+};
+
+export const getEdgeId = (
+  from: string,
+  to: string,
+  {
+    counter = 0,
+    prefix,
+    suffix,
+  }: {
+    counter?: number;
+    prefix?: string;
+    suffix?: string;
+  },
+  id?: string
+) => {
+  if (id) {
+    return id;
+  }
+  return `${prefix ? `${prefix}_` : ''}${from}_${to}_${counter}${suffix ? `_${suffix}` : ''}`;
+};
+
+/**
+ * D3's `selection.attr` method doesn't officially support `undefined`.
+ *
+ * However, it seems if you do pass `undefined`, it seems to be treated as `null`
+ * (e.g. it removes the attribute).
+ */
+export function handleUndefinedAttr(
+  attrValue: Parameters<d3.Selection<BaseType, unknown, HTMLElement, any>['attr']>[1] | undefined
+) {
+  return attrValue ?? null;
+}

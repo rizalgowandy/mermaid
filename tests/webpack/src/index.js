@@ -1,10 +1,10 @@
-/* eslint-disable @typescript-eslint/no-var-requires */
 /* eslint-disable no-console */
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const mermaid = require('mermaid');
 import mindmap from '@mermaid-js/mermaid-mindmap';
 
 const render = async (graph) => {
-  const svg = await mermaid.renderAsync('dummy', graph);
+  const svg = await mermaid.render('dummy', graph);
   console.log(svg);
   document.getElementById('graphDiv').innerHTML = svg;
 };
@@ -13,8 +13,8 @@ const load = async () => {
   await mermaid.registerExternalDiagrams([mindmap]);
   await render('info');
 
-  setTimeout(async () => {
-    await render(`mindmap
+  setTimeout(() => {
+    void render(`mindmap
   root((mindmap))
     Origins
       Long history
@@ -22,7 +22,7 @@ const load = async () => {
       Popularisation
         British popular psychology author Tony Buzan
     Research
-      On effectivness<br/>and features
+      On effectiveness<br/>and features
       On Automatic creation
         Uses
             Creative techniques
@@ -35,4 +35,4 @@ const load = async () => {
   }, 2500);
 };
 
-window.addEventListener('load', load, false);
+window.addEventListener('load', () => void load(), false);

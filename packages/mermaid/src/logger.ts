@@ -1,8 +1,8 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-empty-function */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 /* eslint-disable no-console */
-import moment from 'moment-mini';
+import dayjs from 'dayjs';
 
 export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
 
@@ -29,12 +29,11 @@ export const log: Record<keyof typeof LEVELS, typeof console.log> = {
  *
  * @param level - The level to set the logging to. Default is `"fatal"`
  */
-export const setLogLevel = function (level: keyof typeof LEVELS | number | string = 'fatal') {
+export const setLogLevel = function (level: keyof typeof LEVELS | number = 'fatal') {
   let numericLevel: number = LEVELS.fatal;
   if (typeof level === 'string') {
-    level = level.toLowerCase();
-    if (level in LEVELS) {
-      numericLevel = LEVELS[level as keyof typeof LEVELS];
+    if (level.toLowerCase() in LEVELS) {
+      numericLevel = LEVELS[level];
     }
   } else if (typeof level === 'number') {
     numericLevel = level;
@@ -85,6 +84,6 @@ export const setLogLevel = function (level: keyof typeof LEVELS | number | strin
  * @returns The format with the timestamp and log level
  */
 const format = (level: Uppercase<LogLevel>): string => {
-  const time = moment().format('ss.SSS');
+  const time = dayjs().format('ss.SSS');
   return `%c${time} : ${level} : `;
 };

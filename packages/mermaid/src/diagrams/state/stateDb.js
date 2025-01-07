@@ -1,8 +1,7 @@
-import { log } from '../../logger';
-import { generateId } from '../../utils';
-import mermaidAPI from '../../mermaidAPI';
-import common from '../common/common';
-import * as configApi from '../../config';
+import { log } from '../../logger.js';
+import { generateId } from '../../utils.js';
+import common from '../common/common.js';
+import { getConfig } from '../../diagram-api/diagramAPI.js';
 import {
   setAccTitle,
   getAccTitle,
@@ -11,17 +10,20 @@ import {
   clear as commonClear,
   setDiagramTitle,
   getDiagramTitle,
-} from '../../commonDb';
+} from '../common/commonDb.js';
+import { dataFetcher, reset as resetDataFetching } from './dataFetcher.js';
+import { getDir } from './stateRenderer-v3-unified.js';
 
 import {
   DEFAULT_DIAGRAM_DIRECTION,
   STMT_STATE,
   STMT_RELATION,
   STMT_CLASSDEF,
+  STMT_STYLEDEF,
   STMT_APPLYCLASS,
   DEFAULT_STATE_TYPE,
   DIVIDER_TYPE,
-} from './stateCommon';
+} from './stateCommon.js';
 
 const START_NODE = '[*]';
 const START_TYPE = 'start';
@@ -38,20 +40,26 @@ const STYLECLASS_SEP = ',';
  * In the future, this can be replaced with a class common to all diagrams.
  * ClassDef information = { id: id, styles: [], textStyles: [] }
  *
- * @returns {{}}
+ * @returns {Map<string, any>}
  */
 function newClassesList() {
-  return {};
+  return new Map();
 }
+
+let nodes = [];
+let edges = [];
 
 let direction = DEFAULT_DIAGRAM_DIRECTION;
 let rootDoc = [];
 let classes = newClassesList(); // style classes defined by a classDef
 
+// --------------------------------------
+
 const newDoc = () => {
   return {
+    /** @type {{ id1: string, id2: string, relationTitle: string }[]} */
     relations: [],
-    states: {},
+    states: new Map(),
     documents: {},
   };
 };
@@ -77,10 +85,6 @@ export const relationType = {
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
-export const parseDirective = function (statement, context, type) {
-  mermaidAPI.parseDirective(this, statement, context, type);
-};
-
 const setRootDoc = (o) => {
   log.info('Setting root doc', o);
   // rootDoc = { id: 'root', doc: o };
@@ -94,9 +98,14 @@ const docTranslator = (parent, node, first) => {
     docTranslator(parent, node.state1, true);
     docTranslator(parent, node.state2, false);
   } else {
-    if (node.stmt === STMT_STATE && node.id === '[*]') {
-      node.id = first ? parent.id + '_start' : parent.id + '_end';
-      node.start = first;
+    if (node.stmt === STMT_STATE) {
+      if (node.id === '[*]') {
+        node.id = first ? parent.id + '_start' : parent.id + '_end';
+        node.start = first;
+      } else {
+        // This is just a plain state, not a start or end
+        node.id = node.id.trim();
+      }
     }
 
     if (node.doc) {
@@ -145,7 +154,7 @@ const getRootDocV2 = () => {
  * Ex: the section within a fork has its own statements, and incoming and outgoing statements
  * refer to the fork as a whole (document).
  * See the parser grammar:  the definition of a document is a document then a 'line', where a line can be a statement.
- * This will push the statement into the the list of statements for the current document.
+ * This will push the statement into the list of statements for the current document.
  *
  * @param _doc
  */
@@ -164,13 +173,14 @@ const extract = (_doc) => {
   log.info(doc);
   clear(true);
 
-  log.info('Extract', doc);
+  log.info('Extract initial document:', doc);
 
   doc.forEach((item) => {
+    log.warn('Statement', item.stmt);
     switch (item.stmt) {
       case STMT_STATE:
         addState(
-          item.id,
+          item.id.trim(),
           item.type,
           item.doc,
           item.description,
@@ -184,11 +194,47 @@ const extract = (_doc) => {
         addRelation(item.state1, item.state2, item.description);
         break;
       case STMT_CLASSDEF:
-        addStyleClass(item.id, item.classes);
+        addStyleClass(item.id.trim(), item.classes);
+        break;
+      case STMT_STYLEDEF:
+        {
+          const ids = item.id.trim().split(',');
+          const styles = item.styleClass.split(',');
+          ids.forEach((id) => {
+            let foundState = getState(id);
+            if (foundState === undefined) {
+              const trimmedId = id.trim();
+              addState(trimmedId);
+              foundState = getState(trimmedId);
+            }
+            foundState.styles = styles.map((s) => s.replace(/;/g, '')?.trim());
+          });
+        }
         break;
       case STMT_APPLYCLASS:
-        setCssClass(item.id, item.styleClass);
+        setCssClass(item.id.trim(), item.styleClass);
         break;
+    }
+  });
+
+  const diagramStates = getStates();
+  const config = getConfig();
+  const look = config.look;
+  resetDataFetching();
+  dataFetcher(undefined, getRootDocV2(), diagramStates, nodes, edges, true, look, classes);
+  nodes.forEach((node) => {
+    if (Array.isArray(node.label)) {
+      // add the rest as description
+      node.description = node.label.slice(1);
+      if (node.isGroup && node.description.length > 0) {
+        throw new Error(
+          'Group nodes can only have label. Remove the additional description for node [' +
+            node.id +
+            ']'
+        );
+      }
+      // add first description as label
+      node.label = node.label[0];
     }
   });
 };
@@ -215,11 +261,12 @@ export const addState = function (
   styles = null,
   textStyles = null
 ) {
+  const trimmedId = id?.trim();
   // add the state if needed
-  if (currentDocument.states[id] === undefined) {
-    log.info('Adding state ', id, descr);
-    currentDocument.states[id] = {
-      id: id,
+  if (!currentDocument.states.has(trimmedId)) {
+    log.info('Adding state ', trimmedId, descr);
+    currentDocument.states.set(trimmedId, {
+      id: trimmedId,
       descriptions: [],
       type,
       doc,
@@ -227,55 +274,55 @@ export const addState = function (
       classes: [],
       styles: [],
       textStyles: [],
-    };
+    });
   } else {
-    if (!currentDocument.states[id].doc) {
-      currentDocument.states[id].doc = doc;
+    if (!currentDocument.states.get(trimmedId).doc) {
+      currentDocument.states.get(trimmedId).doc = doc;
     }
-    if (!currentDocument.states[id].type) {
-      currentDocument.states[id].type = type;
+    if (!currentDocument.states.get(trimmedId).type) {
+      currentDocument.states.get(trimmedId).type = type;
     }
   }
 
   if (descr) {
-    log.info('Setting state description', id, descr);
+    log.info('Setting state description', trimmedId, descr);
     if (typeof descr === 'string') {
-      addDescription(id, descr.trim());
+      addDescription(trimmedId, descr.trim());
     }
 
     if (typeof descr === 'object') {
-      descr.forEach((des) => addDescription(id, des.trim()));
+      descr.forEach((des) => addDescription(trimmedId, des.trim()));
     }
   }
 
   if (note) {
-    currentDocument.states[id].note = note;
-    currentDocument.states[id].note.text = common.sanitizeText(
-      currentDocument.states[id].note.text,
-      configApi.getConfig()
-    );
+    const doc2 = currentDocument.states.get(trimmedId);
+    doc2.note = note;
+    doc2.note.text = common.sanitizeText(doc2.note.text, getConfig());
   }
 
   if (classes) {
-    log.info('Setting state classes', id, classes);
+    log.info('Setting state classes', trimmedId, classes);
     const classesList = typeof classes === 'string' ? [classes] : classes;
-    classesList.forEach((klass) => setCssClass(id, klass.trim()));
+    classesList.forEach((cssClass) => setCssClass(trimmedId, cssClass.trim()));
   }
 
   if (styles) {
-    log.info('Setting state styles', id, styles);
+    log.info('Setting state styles', trimmedId, styles);
     const stylesList = typeof styles === 'string' ? [styles] : styles;
-    stylesList.forEach((style) => setStyle(id, style.trim()));
+    stylesList.forEach((style) => setStyle(trimmedId, style.trim()));
   }
 
   if (textStyles) {
-    log.info('Setting state styles', id, styles);
+    log.info('Setting state styles', trimmedId, styles);
     const textStylesList = typeof textStyles === 'string' ? [textStyles] : textStyles;
-    textStylesList.forEach((textStyle) => setTextStyle(id, textStyle.trim()));
+    textStylesList.forEach((textStyle) => setTextStyle(trimmedId, textStyle.trim()));
   }
 };
 
 export const clear = function (saveCommon) {
+  nodes = [];
+  edges = [];
   documents = {
     root: newDoc(),
   };
@@ -290,7 +337,7 @@ export const clear = function (saveCommon) {
 };
 
 export const getState = function (id) {
-  return currentDocument.states[id];
+  return currentDocument.states.get(id);
 };
 
 export const getStates = function () {
@@ -368,10 +415,10 @@ function endTypeIfNeeded(id = '', type = DEFAULT_STATE_TYPE) {
  * @param relationTitle
  */
 export function addRelationObjs(item1, item2, relationTitle) {
-  let id1 = startIdIfNeeded(item1.id);
-  let type1 = startTypeIfNeeded(item1.id, item1.type);
-  let id2 = startIdIfNeeded(item2.id);
-  let type2 = startTypeIfNeeded(item2.id, item2.type);
+  let id1 = startIdIfNeeded(item1.id.trim());
+  let type1 = startTypeIfNeeded(item1.id.trim(), item1.type);
+  let id2 = startIdIfNeeded(item2.id.trim());
+  let type2 = startTypeIfNeeded(item2.id.trim(), item2.type);
 
   addState(
     id1,
@@ -397,7 +444,7 @@ export function addRelationObjs(item1, item2, relationTitle) {
   currentDocument.relations.push({
     id1,
     id2,
-    relationTitle: common.sanitizeText(relationTitle, configApi.getConfig()),
+    relationTitle: common.sanitizeText(relationTitle, getConfig()),
   });
 }
 
@@ -412,9 +459,9 @@ export const addRelation = function (item1, item2, title) {
   if (typeof item1 === 'object') {
     addRelationObjs(item1, item2, title);
   } else {
-    const id1 = startIdIfNeeded(item1);
+    const id1 = startIdIfNeeded(item1.trim());
     const type1 = startTypeIfNeeded(item1);
-    const id2 = endIdIfNeeded(item2);
+    const id2 = endIdIfNeeded(item2.trim());
     const type2 = endTypeIfNeeded(item2);
 
     addState(id1, type1);
@@ -422,15 +469,15 @@ export const addRelation = function (item1, item2, title) {
     currentDocument.relations.push({
       id1,
       id2,
-      title: common.sanitizeText(title, configApi.getConfig()),
+      title: common.sanitizeText(title, getConfig()),
     });
   }
 };
 
 export const addDescription = function (id, descr) {
-  const theState = currentDocument.states[id];
+  const theState = currentDocument.states.get(id);
   const _descr = descr.startsWith(':') ? descr.replace(':', '').trim() : descr;
-  theState.descriptions.push(common.sanitizeText(_descr, configApi.getConfig()));
+  theState.descriptions.push(common.sanitizeText(_descr, getConfig()));
 };
 
 export const cleanupLabel = function (label) {
@@ -455,17 +502,17 @@ const getDividerId = () => {
  */
 export const addStyleClass = function (id, styleAttributes = '') {
   // create a new style class object with this id
-  if (classes[id] === undefined) {
-    classes[id] = { id: id, styles: [], textStyles: [] }; // This is a classDef
+  if (!classes.has(id)) {
+    classes.set(id, { id: id, styles: [], textStyles: [] }); // This is a classDef
   }
-  const foundClass = classes[id];
+  const foundClass = classes.get(id);
   if (styleAttributes !== undefined && styleAttributes !== null) {
     styleAttributes.split(STYLECLASS_SEP).forEach((attrib) => {
       // remove any trailing ;
       const fixedAttrib = attrib.replace(/([^;]*);/, '$1').trim();
 
       // replace some style keywords
-      if (attrib.match(COLOR_KEYWORD)) {
+      if (RegExp(COLOR_KEYWORD).exec(attrib)) {
         const newStyle1 = fixedAttrib.replace(FILL_KEYWORD, BG_FILL);
         const newStyle2 = newStyle1.replace(COLOR_KEYWORD, FILL_KEYWORD);
         foundClass.textStyles.push(newStyle2);
@@ -516,7 +563,7 @@ export const setCssClass = function (itemIds, cssClassName) {
 export const setStyle = function (itemId, styleText) {
   const item = getState(itemId);
   if (item !== undefined) {
-    item.textStyles.push(styleText);
+    item.styles.push(styleText);
   }
 };
 
@@ -540,9 +587,14 @@ const setDirection = (dir) => {
 
 const trimColon = (str) => (str && str[0] === ':' ? str.substr(1).trim() : str.trim());
 
+export const getData = () => {
+  const config = getConfig();
+  return { nodes, edges, other: {}, config, direction: getDir(getRootDocV2()) };
+};
+
 export default {
-  parseDirective,
-  getConfig: () => configApi.getConfig().state,
+  getConfig: () => getConfig().state,
+  getData,
   addState,
   clear,
   getState,

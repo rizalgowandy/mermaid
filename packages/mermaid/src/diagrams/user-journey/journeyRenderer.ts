@@ -1,9 +1,8 @@
 // @ts-nocheck TODO: fix file
 import { select } from 'd3';
-import svgDraw from './svgDraw';
-import { getConfig } from '../../config';
-import { configureSvgSize } from '../../setupGraphViewbox';
-import addSVGAccessibilityFields from '../../accessibility';
+import svgDraw from './svgDraw.js';
+import { getConfig } from '../../diagram-api/diagramAPI.js';
+import { configureSvgSize } from '../../setupGraphViewbox.js';
 
 export const setConf = function (cnf) {
   const keys = Object.keys(cnf);
@@ -50,8 +49,6 @@ const conf = getConfig().journey;
 const LEFT_MARGIN = conf.leftMargin;
 export const draw = function (text, id, version, diagObj) {
   const conf = getConfig().journey;
-  diagObj.db.clear();
-  diagObj.parser.parse(text + '\n');
 
   const securityLevel = getConfig().securityLevel;
   // Handle root and Document for when rendering in sandbox mode
@@ -121,8 +118,6 @@ export const draw = function (text, id, version, diagObj) {
   diagram.attr('viewBox', `${box.startx} -25 ${width} ${height + extraVertForTitle}`);
   diagram.attr('preserveAspectRatio', 'xMinYMin meet');
   diagram.attr('height', height + extraVertForTitle + 25);
-
-  addSVGAccessibilityFields(diagObj.db, diagram, id);
 };
 
 export const bounds = {
@@ -227,6 +222,17 @@ export const drawTasks = function (diagram, tasks, verticalPos) {
       num = sectionNumber % fills.length;
       colour = textColours[sectionNumber % textColours.length];
 
+      // count how many consecutive tasks have the same section
+      let taskInSectionCount = 0;
+      const currentSection = task.section;
+      for (let taskIndex = i; taskIndex < tasks.length; taskIndex++) {
+        if (tasks[taskIndex].section == currentSection) {
+          taskInSectionCount = taskInSectionCount + 1;
+        } else {
+          break;
+        }
+      }
+
       const section = {
         x: i * conf.taskMargin + i * conf.width + LEFT_MARGIN,
         y: 50,
@@ -234,6 +240,7 @@ export const drawTasks = function (diagram, tasks, verticalPos) {
         fill,
         num,
         colour,
+        taskCount: taskInSectionCount,
       };
 
       svgDraw.drawSection(diagram, section, conf);

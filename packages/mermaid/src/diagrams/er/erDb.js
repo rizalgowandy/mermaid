@@ -1,6 +1,5 @@
-import { log } from '../../logger';
-import mermaidAPI from '../../mermaidAPI';
-import * as configApi from '../../config';
+import { log } from '../../logger.js';
+import { getConfig } from '../../diagram-api/diagramAPI.js';
 
 import {
   setAccTitle,
@@ -10,9 +9,9 @@ import {
   clear as commonClear,
   setDiagramTitle,
   getDiagramTitle,
-} from '../../commonDb';
+} from '../common/commonDb.js';
 
-let entities = {};
+let entities = new Map();
 let relationships = [];
 
 const Cardinality = {
@@ -20,24 +19,28 @@ const Cardinality = {
   ZERO_OR_MORE: 'ZERO_OR_MORE',
   ONE_OR_MORE: 'ONE_OR_MORE',
   ONLY_ONE: 'ONLY_ONE',
+  MD_PARENT: 'MD_PARENT',
 };
 
 const Identification = {
   NON_IDENTIFYING: 'NON_IDENTIFYING',
   IDENTIFYING: 'IDENTIFYING',
 };
-
-export const parseDirective = function (statement, context, type) {
-  mermaidAPI.parseDirective(this, statement, context, type);
-};
-
-const addEntity = function (name) {
-  if (entities[name] === undefined) {
-    entities[name] = { attributes: [] };
+/**
+ * Add entity
+ * @param {string} name - The name of the entity
+ * @param {string | undefined} alias - The alias of the entity
+ */
+const addEntity = function (name, alias = undefined) {
+  if (!entities.has(name)) {
+    entities.set(name, { attributes: [], alias });
     log.info('Added new entity :', name);
+  } else if (!entities.get(name).alias && alias) {
+    entities.get(name).alias = alias;
+    log.info(`Add alias '${alias}' to entity '${name}'`);
   }
 
-  return entities[name];
+  return entities.get(name);
 };
 
 const getEntities = () => entities;
@@ -76,7 +79,7 @@ const addRelationship = function (entA, rolA, entB, rSpec) {
 const getRelationships = () => relationships;
 
 const clear = function () {
-  entities = {};
+  entities = new Map();
   relationships = [];
   commonClear();
 };
@@ -84,8 +87,7 @@ const clear = function () {
 export default {
   Cardinality,
   Identification,
-  parseDirective,
-  getConfig: () => configApi.getConfig().er,
+  getConfig: () => getConfig().er,
   addEntity,
   addAttributes,
   getEntities,

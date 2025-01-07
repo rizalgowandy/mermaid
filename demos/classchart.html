@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -17,10 +17,10 @@
     <h1>Class diagram demos</h1>
 
     <pre class="mermaid">
----
-title: Demo Class Diagram
----
-		classDiagram
+    ---
+    title: Demo Class Diagram
+    ---
+    classDiagram
       accTitle: Demo Class Diagram
       accDescr: This class diagram show the abstract Animal class, and 3 classes that inherit from it: Duck, Fish, and Zebra.
 
@@ -38,12 +38,14 @@ title: Demo Class Diagram
         +quack()
       }
       class Fish{
-        -int sizeInFeet
+        -Listint sizeInFeet
         -canEat()
       }
       class Zebra{
         +bool is_wild
-        +run()
+        +run(List~T~, List~OT~)
+        %% +run-composite(List~T, K~)
+        +run-nested(List~List~OT~~)
       }
 
     </pre>
@@ -80,6 +82,7 @@ title: Demo Class Diagram
     Class01 : #size()
     Class01 : -int chimp
     Class01 : +int gorilla
+    Class01 : +abstractAttribute string*
     class Class10~T~ {
     &lt;&lt;service&gt;&gt;
     int id
@@ -122,6 +125,8 @@ title: Demo Class Diagram
     classDiagram
     direction LR
     Animal ()-- Dog
+    Animal ()-- Cat
+    note for Cat "should have no members area"
     Dog : bark()
     Dog : species()
     </pre>
@@ -138,11 +143,105 @@ title: Demo Class Diagram
     Pineapple : -int leafCount()
     Pineapple : -int spikeCount()
     </pre>
-
     <hr />
 
-    <script src="./mermaid.js"></script>
-    <script>
+    <pre class="mermaid">
+    classDiagram
+      class Person {
+        +Id : Guid
+        +FirstName : string
+        +LastName : string
+        -privateProperty : string
+        #ProtectedProperty : string
+        ~InternalProperty : string
+        ~AnotherInternalProperty : List~List~string~~
+      }
+      class People List~List~Person~~
+    </pre>
+    <hr />
+    <pre class="mermaid">
+    classDiagram
+      namespace Company.Project.Module {
+        class GenericClass~T~ {
+          +addItem(item: T)
+          +getItem() T
+        }
+      }
+    </pre>
+    <hr />
+    <pre class="mermaid">
+    classDiagram
+      namespace Company.Project.Module.SubModule {
+        class Report {
+          +generatePDF(data: List)
+          +generateCSV(data: List)
+        }
+      }
+      namespace Company.Project.Module {
+        class Admin {
+          +generateReport()
+        }
+      }
+      Admin --> Report : generates
+    </pre>
+    <pre class="mermaid">
+    classDiagram
+      namespace Company.Project.Module {
+        class User {
+          +login(username: String, password: String)
+          +logout()
+        }
+        class Admin {
+          +addUser(user: User)
+          +removeUser(user: User)
+          +generateReport()
+        }
+        class Report {
+          +generatePDF(reportData: List)
+          +generateCSV(reportData: List)
+        }
+      }
+      Admin --> User : manages
+      Admin --> Report : generates
+    </pre>
+    <hr />
+    <pre class="mermaid">
+    classDiagram
+      namespace Shapes {
+        class Shape {
+          +calculateArea() double
+        }
+        class Circle {
+          +double radius
+        }
+        class Square {
+          +double side
+        }
+      }
+      
+      Shape <|-- Circle
+      Shape <|-- Square
+      
+      namespace Vehicles {
+        class Vehicle {
+          +String brand
+        }
+        class Car {
+          +int horsepower
+        }
+        class Bike {
+          +boolean hasGears
+        }
+      }
+      
+      Vehicle <|-- Car
+      Vehicle <|-- Bike
+      Car --> Circle : "Logo Shape"
+      Bike --> Square : "Logo Shape"
+                  
+    </pre>
+    <script type="module">
+      import mermaid from './mermaid.esm.mjs';
       mermaid.initialize({
         theme: 'default',
         // themeCSS: '.node rect { fill: red; }',
