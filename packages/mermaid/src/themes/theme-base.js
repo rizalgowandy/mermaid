@@ -1,9 +1,9 @@
-import { darken, lighten, adjust, invert } from 'khroma';
-import { mkBorder } from './theme-helpers';
+import { adjust, darken, invert, isDark, lighten } from 'khroma';
 import {
   oldAttributeBackgroundColorEven,
   oldAttributeBackgroundColorOdd,
-} from './erDiagram-oldHardcodedValues';
+} from './erDiagram-oldHardcodedValues.js';
+import { mkBorder } from './theme-helpers.js';
 
 class Theme {
   constructor() {
@@ -13,7 +13,6 @@ class Theme {
      *   deducing colors for instance line color. Default value is #f4f4f4.
      */
     this.background = '#f4f4f4';
-    this.darkMode = false;
 
     this.primaryColor = '#fff4dd';
 
@@ -47,7 +46,11 @@ class Theme {
     this.secondaryTextColor = this.secondaryTextColor || invert(this.secondaryColor);
     this.tertiaryTextColor = this.tertiaryTextColor || invert(this.tertiaryColor);
     this.lineColor = this.lineColor || invert(this.background);
+    this.arrowheadColor = this.arrowheadColor || invert(this.background);
     this.textColor = this.textColor || this.primaryTextColor;
+
+    // TODO: should this instead default to secondaryBorderColor?
+    this.border2 = this.border2 || this.tertiaryBorderColor;
 
     /* Flowchart variables */
     this.nodeBkg = this.nodeBkg || this.primaryColor;
@@ -67,7 +70,7 @@ class Theme {
     this.actorBorder = this.actorBorder || this.primaryBorderColor;
     this.actorBkg = this.actorBkg || this.mainBkg;
     this.actorTextColor = this.actorTextColor || this.primaryTextColor;
-    this.actorLineColor = this.actorLineColor || 'grey';
+    this.actorLineColor = this.actorLineColor || this.actorBorder;
     this.labelBoxBkgColor = this.labelBoxBkgColor || this.actorBkg;
     this.signalColor = this.signalColor || this.textColor;
     this.signalTextColor = this.signalTextColor || this.textColor;
@@ -162,11 +165,21 @@ class Theme {
       }
     }
 
-    // Setup teh label color for the set
+    // Setup the label color for the set
     this.scaleLabelColor = this.scaleLabelColor || this.labelTextColor;
 
     for (let i = 0; i < this.THEME_COLOR_LIMIT; i++) {
       this['cScaleLabel' + i] = this['cScaleLabel' + i] || this.scaleLabelColor;
+    }
+
+    const multiplier = this.darkMode ? -4 : -1;
+    for (let i = 0; i < 5; i++) {
+      this['surface' + i] =
+        this['surface' + i] ||
+        adjust(this.mainBkg, { h: 180, s: -15, l: multiplier * (5 + i * 3) });
+      this['surfacePeer' + i] =
+        this['surfacePeer' + i] ||
+        adjust(this.mainBkg, { h: 180, s: -15, l: multiplier * (8 + i * 3) });
     }
 
     /* class */
@@ -203,12 +216,63 @@ class Theme {
     this.pieLegendTextColor = this.pieLegendTextColor || this.taskTextDarkColor;
     this.pieStrokeColor = this.pieStrokeColor || 'black';
     this.pieStrokeWidth = this.pieStrokeWidth || '2px';
+    this.pieOuterStrokeWidth = this.pieOuterStrokeWidth || '2px';
+    this.pieOuterStrokeColor = this.pieOuterStrokeColor || 'black';
     this.pieOpacity = this.pieOpacity || '0.7';
+
+    /* architecture */
+    this.archEdgeColor = this.archEdgeColor || '#777';
+    this.archEdgeArrowColor = this.archEdgeArrowColor || '#777';
+    this.archEdgeWidth = this.archEdgeWidth || '3';
+    this.archGroupBorderColor = this.archGroupBorderColor || '#000';
+    this.archGroupBorderWidth = this.archGroupBorderWidth || '2px';
+
+    /* quadrant-graph */
+    this.quadrant1Fill = this.quadrant1Fill || this.primaryColor;
+    this.quadrant2Fill = this.quadrant2Fill || adjust(this.primaryColor, { r: 5, g: 5, b: 5 });
+    this.quadrant3Fill = this.quadrant3Fill || adjust(this.primaryColor, { r: 10, g: 10, b: 10 });
+    this.quadrant4Fill = this.quadrant4Fill || adjust(this.primaryColor, { r: 15, g: 15, b: 15 });
+    this.quadrant1TextFill = this.quadrant1TextFill || this.primaryTextColor;
+    this.quadrant2TextFill =
+      this.quadrant2TextFill || adjust(this.primaryTextColor, { r: -5, g: -5, b: -5 });
+    this.quadrant3TextFill =
+      this.quadrant3TextFill || adjust(this.primaryTextColor, { r: -10, g: -10, b: -10 });
+    this.quadrant4TextFill =
+      this.quadrant4TextFill || adjust(this.primaryTextColor, { r: -15, g: -15, b: -15 });
+    this.quadrantPointFill =
+      this.quadrantPointFill || isDark(this.quadrant1Fill)
+        ? lighten(this.quadrant1Fill)
+        : darken(this.quadrant1Fill);
+    this.quadrantPointTextFill = this.quadrantPointTextFill || this.primaryTextColor;
+    this.quadrantXAxisTextFill = this.quadrantXAxisTextFill || this.primaryTextColor;
+    this.quadrantYAxisTextFill = this.quadrantYAxisTextFill || this.primaryTextColor;
+    this.quadrantInternalBorderStrokeFill =
+      this.quadrantInternalBorderStrokeFill || this.primaryBorderColor;
+    this.quadrantExternalBorderStrokeFill =
+      this.quadrantExternalBorderStrokeFill || this.primaryBorderColor;
+    this.quadrantTitleFill = this.quadrantTitleFill || this.primaryTextColor;
+
+    /* xychart */
+    this.xyChart = {
+      backgroundColor: this.xyChart?.backgroundColor || this.background,
+      titleColor: this.xyChart?.titleColor || this.primaryTextColor,
+      xAxisTitleColor: this.xyChart?.xAxisTitleColor || this.primaryTextColor,
+      xAxisLabelColor: this.xyChart?.xAxisLabelColor || this.primaryTextColor,
+      xAxisTickColor: this.xyChart?.xAxisTickColor || this.primaryTextColor,
+      xAxisLineColor: this.xyChart?.xAxisLineColor || this.primaryTextColor,
+      yAxisTitleColor: this.xyChart?.yAxisTitleColor || this.primaryTextColor,
+      yAxisLabelColor: this.xyChart?.yAxisLabelColor || this.primaryTextColor,
+      yAxisTickColor: this.xyChart?.yAxisTickColor || this.primaryTextColor,
+      yAxisLineColor: this.xyChart?.yAxisLineColor || this.primaryTextColor,
+      plotColorPalette:
+        this.xyChart?.plotColorPalette ||
+        '#FFF4DD,#FFD8B1,#FFA07A,#ECEFF1,#D6DBDF,#C3E0A8,#FFB6A4,#FFD74D,#738FA7,#FFFFF0',
+    };
 
     /* requirement-diagram */
     this.requirementBackground = this.requirementBackground || this.primaryColor;
     this.requirementBorderColor = this.requirementBorderColor || this.primaryBorderColor;
-    this.requirementBorderSize = this.requirementBorderSize || this.primaryBorderColor;
+    this.requirementBorderSize = this.requirementBorderSize || '1';
     this.requirementTextColor = this.requirementTextColor || this.primaryTextColor;
     this.relationColor = this.relationColor || this.lineColor;
     this.relationLabelBackground =

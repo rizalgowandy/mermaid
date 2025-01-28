@@ -1,7 +1,6 @@
-import flowDb from '../flowDb';
-import flow from './flow';
-import filter from 'lodash-es/filter';
-import { setConfig } from '../../../config';
+import { FlowDB } from '../flowDb.js';
+import flow from './flowParser.ts';
+import { setConfig } from '../../../config.js';
 
 setConfig({
   securityLevel: 'strict',
@@ -9,7 +8,7 @@ setConfig({
 
 describe('when parsing directions', function () {
   beforeEach(function () {
-    flow.parser.yy = flowDb;
+    flow.parser.yy = new FlowDB();
     flow.parser.yy.clear();
     flow.parser.yy.setGen('gen-2');
   });

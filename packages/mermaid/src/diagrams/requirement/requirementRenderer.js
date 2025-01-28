@@ -1,12 +1,11 @@
 import { line, select } from 'd3';
 import { layout as dagreLayout } from 'dagre-d3-es/src/dagre/index.js';
 import * as graphlib from 'dagre-d3-es/src/graphlib/index.js';
-import { log } from '../../logger';
-import { configureSvgSize } from '../../setupGraphViewbox';
-import common from '../common/common';
-import markers from './requirementMarkers';
-import { getConfig } from '../../config';
-import addSVGAccessibilityFields from '../../accessibility';
+import { getConfig } from '../../diagram-api/diagramAPI.js';
+import { log } from '../../logger.js';
+import { configureSvgSize } from '../../setupGraphViewbox.js';
+import common from '../common/common.js';
+import markers from './requirementMarkers.js';
 
 let conf = {};
 let relCnt = 0;
@@ -192,9 +191,13 @@ const drawRelationshipFromLayout = function (svg, rel, g, insert, diagObj) {
   return;
 };
 
+/**
+ * @param {Map<string, any>} reqs
+ * @param graph
+ * @param svgNode
+ */
 export const drawReqs = (reqs, graph, svgNode) => {
-  Object.keys(reqs).forEach((reqName) => {
-    let req = reqs[reqName];
+  reqs.forEach((req, reqName) => {
     reqName = elementString(reqName);
     log.info('Added new requirement: ', reqName);
 
@@ -237,9 +240,13 @@ export const drawReqs = (reqs, graph, svgNode) => {
   });
 };
 
+/**
+ * @param {Map<string, any>} els
+ * @param graph
+ * @param svgNode
+ */
 export const drawElements = (els, graph, svgNode) => {
-  Object.keys(els).forEach((elName) => {
-    let el = els[elName];
+  els.forEach((el, elName) => {
     const id = elementString(elName);
 
     const groupNode = svgNode.append('g').attr('id', id);
@@ -307,8 +314,6 @@ const elementString = (str) => {
 
 export const draw = (text, id, _version, diagObj) => {
   conf = getConfig().requirement;
-  diagObj.db.clear();
-  diagObj.parser.parse(text);
 
   const securityLevel = conf.securityLevel;
   // Handle root and Document for when rendering in sandbox mode
@@ -363,9 +368,9 @@ export const draw = (text, id, _version, diagObj) => {
   configureSvgSize(svg, height, width, conf.useMaxWidth);
 
   svg.attr('viewBox', `${svgBounds.x - padding} ${svgBounds.y - padding} ${width} ${height}`);
-  // Adds title and description to the requirements diagram
-  addSVGAccessibilityFields(diagObj.db, svg, id);
 };
+
+// cspell:ignore txts
 
 export default {
   draw,

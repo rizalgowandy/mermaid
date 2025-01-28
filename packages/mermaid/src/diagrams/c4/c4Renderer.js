@@ -1,14 +1,13 @@
 import { select } from 'd3';
-import svgDraw from './svgDraw';
-import { log } from '../../logger';
-import { parser } from './parser/c4Diagram';
-import common from '../common/common';
-import c4Db from './c4Db';
-import * as configApi from '../../config';
-import assignWithDepth from '../../assignWithDepth';
-import { wrapLabel, calculateTextWidth, calculateTextHeight } from '../../utils';
-import { configureSvgSize } from '../../setupGraphViewbox';
-import addSVGAccessibilityFields from '../../accessibility';
+import svgDraw from './svgDraw.js';
+import { log } from '../../logger.js';
+import { parser } from './parser/c4Diagram.jison';
+import common from '../common/common.js';
+import c4Db from './c4Db.js';
+import { getConfig } from '../../diagram-api/diagramAPI.js';
+import assignWithDepth from '../../assignWithDepth.js';
+import { wrapLabel, calculateTextWidth, calculateTextHeight } from '../../utils.js';
+import { configureSvgSize } from '../../setupGraphViewbox.js';
 
 let globalBoundaryMaxX = 0,
   globalBoundaryMaxY = 0;
@@ -221,7 +220,7 @@ export const drawC4ShapeArray = function (currentBounds, diagram, c4ShapeArray, 
     let c4ShapeTypeConf = c4ShapeFont(conf, c4Shape.typeC4Shape.text);
     c4ShapeTypeConf.fontSize = c4ShapeTypeConf.fontSize - 2;
     c4Shape.typeC4Shape.width = calculateTextWidth(
-      '<<' + c4Shape.typeC4Shape.text + '>>',
+      '«' + c4Shape.typeC4Shape.text + '»',
       c4ShapeTypeConf
     );
     c4Shape.typeC4Shape.height = c4ShapeTypeConf.fontSize + 2;
@@ -259,21 +258,21 @@ export const drawC4ShapeArray = function (currentBounds, diagram, c4ShapeArray, 
     c4ShapeLabelConf.fontSize = c4ShapeLabelConf.fontSize + 2;
     c4ShapeLabelConf.fontWeight = 'bold';
     calcC4ShapeTextWH('label', c4Shape, c4ShapeTextWrap, c4ShapeLabelConf, textLimitWidth);
-    c4Shape['label'].Y = Y + 8;
-    Y = c4Shape['label'].Y + c4Shape['label'].height;
+    c4Shape.label.Y = Y + 8;
+    Y = c4Shape.label.Y + c4Shape.label.height;
 
     if (c4Shape.type && c4Shape.type.text !== '') {
       c4Shape.type.text = '[' + c4Shape.type.text + ']';
       let c4ShapeTypeConf = c4ShapeFont(conf, c4Shape.typeC4Shape.text);
       calcC4ShapeTextWH('type', c4Shape, c4ShapeTextWrap, c4ShapeTypeConf, textLimitWidth);
-      c4Shape['type'].Y = Y + 5;
-      Y = c4Shape['type'].Y + c4Shape['type'].height;
+      c4Shape.type.Y = Y + 5;
+      Y = c4Shape.type.Y + c4Shape.type.height;
     } else if (c4Shape.techn && c4Shape.techn.text !== '') {
       c4Shape.techn.text = '[' + c4Shape.techn.text + ']';
       let c4ShapeTechnConf = c4ShapeFont(conf, c4Shape.techn.text);
       calcC4ShapeTextWH('techn', c4Shape, c4ShapeTextWrap, c4ShapeTechnConf, textLimitWidth);
-      c4Shape['techn'].Y = Y + 5;
-      Y = c4Shape['techn'].Y + c4Shape['techn'].height;
+      c4Shape.techn.Y = Y + 5;
+      Y = c4Shape.techn.Y + c4Shape.techn.height;
     }
 
     let rectHeight = Y;
@@ -282,11 +281,11 @@ export const drawC4ShapeArray = function (currentBounds, diagram, c4ShapeArray, 
     if (c4Shape.descr && c4Shape.descr.text !== '') {
       let c4ShapeDescrConf = c4ShapeFont(conf, c4Shape.typeC4Shape.text);
       calcC4ShapeTextWH('descr', c4Shape, c4ShapeTextWrap, c4ShapeDescrConf, textLimitWidth);
-      c4Shape['descr'].Y = Y + 20;
-      Y = c4Shape['descr'].Y + c4Shape['descr'].height;
+      c4Shape.descr.Y = Y + 20;
+      Y = c4Shape.descr.Y + c4Shape.descr.height;
 
       rectWidth = Math.max(c4Shape.label.width, c4Shape.descr.width);
-      rectHeight = Y - c4Shape['descr'].textLines * 5;
+      rectHeight = Y - c4Shape.descr.textLines * 5;
     }
 
     rectWidth = rectWidth + conf.c4ShapePadding;
@@ -483,8 +482,8 @@ function drawInsideBoundary(
       currentBoundaryLabelConf,
       currentBounds.data.widthLimit
     );
-    currentBoundary['label'].Y = Y + 8;
-    Y = currentBoundary['label'].Y + currentBoundary['label'].height;
+    currentBoundary.label.Y = Y + 8;
+    Y = currentBoundary.label.Y + currentBoundary.label.height;
 
     if (currentBoundary.type && currentBoundary.type.text !== '') {
       currentBoundary.type.text = '[' + currentBoundary.type.text + ']';
@@ -496,8 +495,8 @@ function drawInsideBoundary(
         currentBoundaryTypeConf,
         currentBounds.data.widthLimit
       );
-      currentBoundary['type'].Y = Y + 5;
-      Y = currentBoundary['type'].Y + currentBoundary['type'].height;
+      currentBoundary.type.Y = Y + 5;
+      Y = currentBoundary.type.Y + currentBoundary.type.height;
     }
 
     if (currentBoundary.descr && currentBoundary.descr.text !== '') {
@@ -510,8 +509,8 @@ function drawInsideBoundary(
         currentBoundaryDescrConf,
         currentBounds.data.widthLimit
       );
-      currentBoundary['descr'].Y = Y + 20;
-      Y = currentBoundary['descr'].Y + currentBoundary['descr'].height;
+      currentBoundary.descr.Y = Y + 20;
+      Y = currentBoundary.descr.Y + currentBoundary.descr.height;
     }
 
     if (i == 0 || i % c4BoundaryInRow === 0) {
@@ -543,15 +542,15 @@ function drawInsideBoundary(
       );
     }
     parentBoundaryAlias = currentBoundary.alias;
-    let nextCurrentBoundarys = diagObj.db.getBoundarys(parentBoundaryAlias);
+    let nextCurrentBoundaries = diagObj.db.getBoundarys(parentBoundaryAlias);
 
-    if (nextCurrentBoundarys.length > 0) {
+    if (nextCurrentBoundaries.length > 0) {
       // draw boundary inside currentBoundary
       drawInsideBoundary(
         diagram,
         parentBoundaryAlias,
         currentBounds,
-        nextCurrentBoundarys,
+        nextCurrentBoundaries,
         diagObj
       );
     }
@@ -581,8 +580,8 @@ function drawInsideBoundary(
  * @param diagObj
  */
 export const draw = function (_text, id, _version, diagObj) {
-  conf = configApi.getConfig().c4;
-  const securityLevel = configApi.getConfig().securityLevel;
+  conf = getConfig().c4;
+  const securityLevel = getConfig().securityLevel;
   // Handle root and Document for when rendering in sandbox mode
   let sandboxElement;
   if (securityLevel === 'sandbox') {
@@ -675,7 +674,6 @@ export const draw = function (_text, id, _version, diagObj) {
       (height + extraVertForTitle)
   );
 
-  addSVGAccessibilityFields(parser.yy, diagram, id);
   log.debug(`models:`, box);
 };
 

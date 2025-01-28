@@ -1,5 +1,5 @@
-import { parser } from './parser/stateDiagram';
-import stateDb from './stateDb';
+import { parser } from './parser/stateDiagram.jison';
+import stateDb from './stateDb.js';
 import stateDiagram from './parser/stateDiagram.jison';
 
 describe('state diagram V2, ', function () {
@@ -54,16 +54,6 @@ describe('state diagram V2, ', function () {
       parser.parse(str);
       const title = stateDb.getAccTitle();
       expect(title).toBe('a simple title of the diagram');
-    });
-    it('simple with directive', function () {
-      const str = `%%{init: {'logLevel': 0 }}%%
-      stateDiagram-v2\n
-      State1 : this is another string
-      [*] --> State1
-      State1 --> [*]
-      `;
-
-      parser.parse(str);
     });
     it('should handle relation definitions', function () {
       const str = `stateDiagram-v2\n
@@ -415,7 +405,7 @@ describe('state diagram V2, ', function () {
       stateDiagram.parser.yy.extract(stateDiagram.parser.yy.getRootDocV2());
 
       const states = stateDb.getStates();
-      expect(states['Active'].doc[0].id).toEqual('Idle');
+      expect(states.get('Active').doc[0].id).toEqual('Idle');
 
       const rels = stateDb.getRelations();
       const rel_Inactive_Idle = rels.find((rel) => rel.id1 === 'Inactive' && rel.id2 === 'Idle');

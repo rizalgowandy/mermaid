@@ -1,14 +1,13 @@
-import * as graphlib from 'dagre-d3-es/src/graphlib';
+import * as graphlib from 'dagre-d3-es/src/graphlib/index.js';
 import { line, curveBasis, select } from 'd3';
 import { layout as dagreLayout } from 'dagre-d3-es/src/dagre/index.js';
-import { getConfig } from '../../config';
-import { log } from '../../logger';
-import utils from '../../utils';
-import erMarkers from './erMarkers';
-import { configureSvgSize } from '../../setupGraphViewbox';
-import addSVGAccessibilityFields from '../../accessibility';
-import { parseGenericTypes } from '../common/common';
-import { v4 as uuid4 } from 'uuid';
+import { getConfig } from '../../diagram-api/diagramAPI.js';
+import { log } from '../../logger.js';
+import utils from '../../utils.js';
+import erMarkers from './erMarkers.js';
+import { configureSvgSize } from '../../setupGraphViewbox.js';
+import { parseGenericTypes } from '../common/common.js';
+import { v5 as uuid5 } from 'uuid';
 
 /** Regex used to remove chars from the entity name so the result can be used in an id */
 const BAD_ID_CHARS_REGEXP = /[^\dA-Za-z](\W)*/g;
@@ -60,7 +59,7 @@ const drawAttributes = (groupNode, entityTextNode, attributes) => {
 
   // Check to see if any of the attributes has a key or a comment
   attributes.forEach((item) => {
-    if (item.attributeKeyType !== undefined) {
+    if (item.attributeKeyTypeList !== undefined && item.attributeKeyTypeList.length > 0) {
       hasKeyType = true;
     }
 
@@ -113,6 +112,9 @@ const drawAttributes = (groupNode, entityTextNode, attributes) => {
     nodeHeight = Math.max(typeBBox.height, nameBBox.height);
 
     if (hasKeyType) {
+      const keyTypeNodeText =
+        item.attributeKeyTypeList !== undefined ? item.attributeKeyTypeList.join(',') : '';
+
       const keyTypeNode = groupNode
         .append('text')
         .classed('er entityLabel', true)
@@ -123,7 +125,7 @@ const drawAttributes = (groupNode, entityTextNode, attributes) => {
         .style('text-anchor', 'left')
         .style('font-family', getConfig().fontFamily)
         .style('font-size', attrFontSize + 'px')
-        .text(item.attributeKeyType || '');
+        .text(keyTypeNodeText);
 
       attributeNode.kn = keyTypeNode;
       const keyTypeBBox = keyTypeNode.node().getBBox();
@@ -200,7 +202,7 @@ const drawAttributes = (groupNode, entityTextNode, attributes) => {
     let attribStyle = 'attributeBoxOdd'; // We will flip the style on alternate rows to achieve a banded effect
 
     attributeNodes.forEach((attributeNode) => {
-      // Calculate the alignment y co-ordinate for the type/name of the attribute
+      // Calculate the alignment y coordinate for the type/name of the attribute
       const alignY = heightOffset + heightPadding + attributeNode.height / 2;
 
       // Position the type attribute
@@ -294,12 +296,12 @@ const drawAttributes = (groupNode, entityTextNode, attributes) => {
  * Use D3 to construct the svg elements for the entities
  *
  * @param svgNode The svg node that contains the diagram
- * @param entities The entities to be drawn
+ * @param {Map<string, object>} entities The entities to be drawn
  * @param graph The graph that contains the vertex and edge definitions post-layout
  * @returns {object} The first entity that was inserted
  */
 const drawEntities = function (svgNode, entities, graph) {
-  const keys = Object.keys(entities);
+  const keys = [...entities.keys()];
   let firstOne;
 
   keys.forEach(function (entityName) {
@@ -324,12 +326,12 @@ const drawEntities = function (svgNode, entities, graph) {
       .style('text-anchor', 'middle')
       .style('font-family', getConfig().fontFamily)
       .style('font-size', conf.fontSize + 'px')
-      .text(entityName);
+      .text(entities.get(entityName).alias ?? entityName);
 
     const { width: entityWidth, height: entityHeight } = drawAttributes(
       groupNode,
       textNode,
-      entities[entityName].attributes
+      entities.get(entityName).attributes
     );
 
     // Draw the rectangle - insert it before the text so that the text is not obscured
@@ -476,6 +478,9 @@ const drawRelationshipFromLayout = function (svg, rel, g, insert, diagObj) {
     case diagObj.db.Cardinality.ONLY_ONE:
       svgPath.attr('marker-end', 'url(' + url + '#' + erMarkers.ERMarkers.ONLY_ONE_END + ')');
       break;
+    case diagObj.db.Cardinality.MD_PARENT:
+      svgPath.attr('marker-end', 'url(' + url + '#' + erMarkers.ERMarkers.MD_PARENT_END + ')');
+      break;
   }
 
   switch (rel.relSpec.cardB) {
@@ -500,6 +505,9 @@ const drawRelationshipFromLayout = function (svg, rel, g, insert, diagObj) {
     case diagObj.db.Cardinality.ONLY_ONE:
       svgPath.attr('marker-start', 'url(' + url + '#' + erMarkers.ERMarkers.ONLY_ONE_START + ')');
       break;
+    case diagObj.db.Cardinality.MD_PARENT:
+      svgPath.attr('marker-start', 'url(' + url + '#' + erMarkers.ERMarkers.MD_PARENT_START + ')');
+      break;
   }
 
   // Now label the relationship
@@ -511,6 +519,8 @@ const drawRelationshipFromLayout = function (svg, rel, g, insert, diagObj) {
   // Append a text node containing the label
   const labelId = 'rel' + relCnt;
 
+  const labelText = rel.roleA.split(/<br ?\/>/g);
+
   const labelNode = svg
     .append('text')
     .classed('er relationshipLabel', true)
@@ -520,8 +530,20 @@ const drawRelationshipFromLayout = function (svg, rel, g, insert, diagObj) {
     .style('text-anchor', 'middle')
     .style('dominant-baseline', 'middle')
     .style('font-family', getConfig().fontFamily)
-    .style('font-size', conf.fontSize + 'px')
-    .text(rel.roleA);
+    .style('font-size', conf.fontSize + 'px');
+
+  if (labelText.length == 1) {
+    labelNode.text(rel.roleA);
+  } else {
+    const firstShift = -(labelText.length - 1) * 0.5;
+    labelText.forEach((txt, i) => {
+      labelNode
+        .append('tspan')
+        .attr('x', labelPoint.x)
+        .attr('dy', `${i === 0 ? firstShift : 1}em`)
+        .text(txt);
+    });
+  }
 
   // Figure out how big the opaque 'container' rectangle needs to be
   const labelBBox = labelNode.node().getBBox();
@@ -547,7 +569,6 @@ const drawRelationshipFromLayout = function (svg, rel, g, insert, diagObj) {
 export const draw = function (text, id, _version, diagObj) {
   conf = getConfig().er;
   log.info('Drawing ER diagram');
-  //  diag.db.clear();
   const securityLevel = getConfig().securityLevel;
   // Handle root and Document for when rendering in sandbox mode
   let sandboxElement;
@@ -559,13 +580,6 @@ export const draw = function (text, id, _version, diagObj) {
       ? select(sandboxElement.nodes()[0].contentDocument.body)
       : select('body');
   // const doc = securityLevel === 'sandbox' ? sandboxElement.nodes()[0].contentDocument : document;
-
-  // Parse the text to populate erDb
-  // try {
-  //   parser.parse(text);
-  // } catch (err) {
-  //   log.debug('Parsing failed');
-  // }
 
   // Get a reference to the svg node that contains the text
   const svg = root.select(`[id='${id}']`);
@@ -579,8 +593,8 @@ export const draw = function (text, id, _version, diagObj) {
   // 2. Make sure they are all added to the graph
   // 3. Add all the edges (relationships) to the graph as well
   // 4. Let dagre do its magic to lay out the graph.  This assigns:
-  //    - the centre co-ordinates for each node, bearing in mind the dimensions and edge relationships
-  //    - the path co-ordinates for each edge
+  //    - the centre coordinates for each node, bearing in mind the dimensions and edge relationships
+  //    - the path coordinates for each edge
   //    But it has no impact on the svg child nodes - the diagram remains with every entity rooted at 0,0
   // 5. Now assign a transform to each entity in the svg node so that it gets drawn in the correct place, as determined by
   //    its centre point, which is obtained from the graph, and it's width and height
@@ -642,13 +656,26 @@ export const draw = function (text, id, _version, diagObj) {
   configureSvgSize(svg, height, width, conf.useMaxWidth);
 
   svg.attr('viewBox', `${svgBounds.x - padding} ${svgBounds.y - padding} ${width} ${height}`);
-
-  addSVGAccessibilityFields(diagObj.db, svg, id);
 }; // draw
 
 /**
+ * UUID namespace for ER diagram IDs
+ *
+ * This can be generated via running:
+ *
+ * ```js
+ * const { v5: uuid5 } = await import('uuid');
+ * uuid5(
+ *   'https://mermaid-js.github.io/mermaid/syntax/entityRelationshipDiagram.html',
+ *   uuid5.URL
+ * );
+ * ```
+ */
+const MERMAID_ERDIAGRAM_UUID = '28e9f9db-3c8d-5aa5-9faf-44286ae5937c';
+
+/**
  * Return a unique id based on the given string. Start with the prefix, then a hyphen, then the
- * simplified str, then a hyphen, then a unique uuid. (Hyphens are only included if needed.)
+ * simplified str, then a hyphen, then a unique uuid based on the str. (Hyphens are only included if needed.)
  * Although the official XML standard for ids says that many more characters are valid in the id,
  * this keeps things simple by accepting only A-Za-z0-9.
  *
@@ -659,7 +686,11 @@ export const draw = function (text, id, _version, diagObj) {
  */
 export function generateId(str = '', prefix = '') {
   const simplifiedStr = str.replace(BAD_ID_CHARS_REGEXP, '');
-  return `${strWithHyphen(prefix)}${strWithHyphen(simplifiedStr)}${uuid4()}`;
+  // we use `uuid v5` so that UUIDs are consistent given a string.
+  return `${strWithHyphen(prefix)}${strWithHyphen(simplifiedStr)}${uuid5(
+    str,
+    MERMAID_ERDIAGRAM_UUID
+  )}`;
 }
 
 /**

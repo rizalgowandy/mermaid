@@ -1,19 +1,29 @@
-import jison from './.vite/jisonPlugin';
-import { defineConfig } from 'vitest/config';
+import jison from './.vite/jisonPlugin.js';
+import jsonSchemaPlugin from './.vite/jsonSchemaPlugin.js';
+import typescript from '@rollup/plugin-typescript';
+import { defaultExclude, defineConfig } from 'vitest/config';
 
 export default defineConfig({
   resolve: {
-    extensions: ['.jison', '.js', '.ts', '.json'],
+    extensions: ['.js'],
   },
-  plugins: [jison()],
+  plugins: [
+    jison(),
+    jsonSchemaPlugin(), // handles .schema.yaml JSON Schema files
+    typescript({ compilerOptions: { declaration: false } }),
+  ],
   test: {
     environment: 'jsdom',
     globals: true,
     // TODO: should we move this to a mermaid-core package?
     setupFiles: ['packages/mermaid/src/tests/setup.ts'],
     coverage: {
+      provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],
+      reportsDirectory: './coverage/vitest',
+      exclude: [...defaultExclude, './tests/**', '**/__mocks__/**', '**/generated/'],
     },
+    includeSource: ['packages/*/src/**/*.{js,ts}'],
   },
   build: {
     /** If you set esmExternals to true, this plugins assumes that
@@ -22,5 +32,8 @@ export default defineConfig({
     commonjsOptions: {
       esmExternals: true,
     },
+  },
+  define: {
+    'import.meta.vitest': 'undefined',
   },
 });

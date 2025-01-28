@@ -98,7 +98,7 @@ In a real world use of state diagrams you often end up with diagrams that are mu
 have several internal states. These are called composite states in this terminology.
 
 In order to define a composite state you need to use the state keyword followed by an id and the body of the composite
-state between \{\}. See the example below:
+state between \{\}. You can name a composite state on a separate line just like a simple state. See the example below:
 
 ```mermaid-example
 stateDiagram-v2
@@ -106,6 +106,14 @@ stateDiagram-v2
     state First {
         [*] --> second
         second --> [*]
+    }
+
+    [*] --> NamedComposite
+    NamedComposite: Another Composite
+    state NamedComposite {
+        [*] --> namedSimple
+        namedSimple --> [*]
+        namedSimple: Another simple
     }
 ```
 
@@ -249,7 +257,7 @@ Comments can be entered within a state diagram chart, which will be ignored by t
 own line, and must be prefaced with `%%` (double percent signs). Any text after the start of the comment to the next
 newline will be treated as a comment, including any diagram syntax
 
-```mmd
+```mermaid
 stateDiagram-v2
     [*] --> Still
     Still --> [*]
@@ -280,8 +288,8 @@ a _[valid CSS property name](https://www.w3.org/TR/CSS/#properties)_ followed by
 
 Here is an example of a classDef with just one property-value pair:
 
-```
-    classDef movement font-style:italic;
+```txt
+classDef movement font-style:italic;
 ```
 
 where
@@ -293,8 +301,8 @@ If you want to have more than one _property-value pair_ then you put a comma (`,
 
 Here is an example with three property-value pairs:
 
-```
-    classDef badBadEvent fill:#f00,color:white,font-weight:bold,stroke-width:2px,stroke:yellow
+```txt
+classDef badBadEvent fill:#f00,color:white,font-weight:bold,stroke-width:2px,stroke:yellow
 ```
 
 where
@@ -304,7 +312,7 @@ where
 - the second _property_ is `color` and its _value_ is `white`
 - the third _property_ is `font-weight` and its _value_ is `bold`
 - the fourth _property_ is `stroke-width` and its _value_ is `2px`
-- the fifth _property_ is `stroke` and its _value_ is `yello`
+- the fifth _property_ is `stroke` and its _value_ is `yellow`
 
 ### Apply classDef styles to states
 
@@ -318,19 +326,19 @@ There are two ways to apply a `classDef` style to a state:
 
 A `class` statement tells Mermaid to apply the named classDef to one or more classes. The form is:
 
-```text
-    class [one or more state names, separated by commas] [name of a style defined with classDef]
+```txt
+class [one or more state names, separated by commas] [name of a style defined with classDef]
 ```
 
 Here is an example applying the `badBadEvent` style to a state named `Crash`:
 
-```text
+```txt
 class Crash badBadEvent
 ```
 
 Here is an example applying the `movement` style to the two states `Moving` and `Crash`:
 
-```text
+```txt
 class Moving, Crash movement
 ```
 
@@ -365,7 +373,7 @@ and `badBadEvent`
 
 You can apply a classDef style to a state using the `:::` (three colons) operator. The syntax is
 
-```text
+```txt
 [state]:::[style name]
 ```
 
@@ -396,7 +404,7 @@ Spaces can be added to a state by first defining the state with an id and then r
 
 In the following example there is a state with the id **yswsii** and description **Your state with spaces in it**.
 After it has been defined, **yswsii** is used in the diagram in the first transition (`[*] --> yswsii`)
-and also in the transition to **YetAnotherState** (`yswsii --> YetAnotherState`).  
+and also in the transition to **YetAnotherState** (`yswsii --> YetAnotherState`).
 (**yswsii** has been styled so that it is different from the other states.)
 
 ```mermaid-example
@@ -410,3 +418,5 @@ stateDiagram
     yswsii --> YetAnotherState
     YetAnotherState --> [*]
 ```
+
+<!--- cspell:ignore yswsii --->

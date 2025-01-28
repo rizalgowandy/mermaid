@@ -1,39 +1,8 @@
-import classDiagram from './diagrams/class/styles';
-import er from './diagrams/er/styles';
-import error from './diagrams/error/styles';
-import flowchart from './diagrams/flowchart/styles';
-import gantt from './diagrams/gantt/styles';
-// import gitGraph from './diagrams/git/styles';
-import info from './diagrams/info/styles';
-import pie from './diagrams/pie/styles';
-import requirement from './diagrams/requirement/styles';
-import sequence from './diagrams/sequence/styles';
-import stateDiagram from './diagrams/state/styles';
-import journey from './diagrams/user-journey/styles';
-import c4 from './diagrams/c4/styles';
-import { FlowChartStyleOptions } from './diagrams/flowchart/styles';
-import { log } from './logger';
+import type { FlowChartStyleOptions } from './diagrams/flowchart/styles.js';
+import { log } from './logger.js';
+import type { DiagramStylesProvider } from './diagram-api/types.js';
 
-// TODO @knut: Inject from registerDiagram.
-const themes: Record<string, any> = {
-  flowchart,
-  'flowchart-v2': flowchart,
-  sequence,
-  gantt,
-  classDiagram,
-  'classDiagram-v2': classDiagram,
-  class: classDiagram,
-  stateDiagram,
-  state: stateDiagram,
-  // gitGraph,
-  info,
-  pie,
-  er,
-  error,
-  journey,
-  requirement,
-  c4,
-};
+const themes: Record<string, DiagramStylesProvider> = {};
 
 const getStyles = (
   type: string,
@@ -48,8 +17,8 @@ const getStyles = (
   } & FlowChartStyleOptions
 ) => {
   let diagramStyles = '';
-  if (type in themes && themes[type as keyof typeof themes]) {
-    diagramStyles = themes[type as keyof typeof themes](options);
+  if (type in themes && themes[type]) {
+    diagramStyles = themes[type](options);
   } else {
     log.warn(`No theme found for ${type}`);
   }
@@ -58,7 +27,28 @@ const getStyles = (
     font-size: ${options.fontSize};
     fill: ${options.textColor}
   }
-
+  @keyframes edge-animation-frame {
+    from {
+      stroke-dashoffset: 0;
+    }
+  }
+  @keyframes dash {
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+  & .edge-animation-slow {
+    stroke-dasharray: 9,5 !important;
+    stroke-dashoffset: 900;
+    animation: dash 50s linear infinite;
+    stroke-linecap: round;
+  }
+  & .edge-animation-fast {
+    stroke-dasharray: 9,5 !important;
+    stroke-dashoffset: 900;
+    animation: dash 20s linear infinite;
+    stroke-linecap: round;
+  }
   /* Classes common for multiple diagrams */
 
   & .error-icon {
@@ -70,7 +60,7 @@ const getStyles = (
   }
 
   & .edge-thickness-normal {
-    stroke-width: 2px;
+    stroke-width: 1px;
   }
   & .edge-thickness-thick {
     stroke-width: 3.5px
@@ -78,7 +68,10 @@ const getStyles = (
   & .edge-pattern-solid {
     stroke-dasharray: 0;
   }
-
+  & .edge-thickness-invisible {
+    stroke-width: 0;
+    fill: none;
+  }
   & .edge-pattern-dashed{
     stroke-dasharray: 3;
   }
@@ -98,6 +91,9 @@ const getStyles = (
     font-family: ${options.fontFamily};
     font-size: ${options.fontSize};
   }
+   & p {
+    margin: 0
+   }
 
   ${diagramStyles}
 
@@ -105,8 +101,10 @@ const getStyles = (
 `;
 };
 
-export const addStylesForDiagram = (type: string, diagramTheme: unknown): void => {
-  themes[type] = diagramTheme;
+export const addStylesForDiagram = (type: string, diagramTheme?: DiagramStylesProvider): void => {
+  if (diagramTheme !== undefined) {
+    themes[type] = diagramTheme;
+  }
 };
 
 export default getStyles;

@@ -1,32 +1,61 @@
-'use strict';
-import { vi } from 'vitest';
+import { assert, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import mermaid from './mermaid';
-import { MermaidConfig } from './config.type';
+// -------------------------------------
+//  Mocks and mocking
 
-import mermaidAPI, { removeExistingElements } from './mermaidAPI';
-import {
-  encodeEntities,
-  decodeEntities,
-  createCssStyles,
-  createUserStyles,
+import { MockedD3 } from './tests/MockedD3.js';
+
+// Note: If running this directly from within an IDE, the mocks directory must be at packages/mermaid/mocks
+vi.mock('d3');
+vi.mock('dagre-d3');
+
+// mermaidAPI.spec.ts:
+import * as accessibility from './accessibility.js'; // Import it this way so we can use spyOn(accessibility,...)
+vi.mock('./accessibility.js', () => ({
+  setA11yDiagramInfo: vi.fn(),
+  addSVGa11yTitleDescription: vi.fn(),
+}));
+
+// Mock the renderers specifically so we can test render(). Need to mock draw() for each renderer
+vi.mock('./diagrams/c4/c4Renderer.js');
+vi.mock('./diagrams/class/classRenderer.js');
+vi.mock('./diagrams/class/classRenderer-v2.js');
+vi.mock('./diagrams/er/erRenderer.js');
+vi.mock('./diagrams/flowchart/flowRenderer-v2.js');
+vi.mock('./diagrams/git/gitGraphRenderer.js');
+vi.mock('./diagrams/gantt/ganttRenderer.js');
+vi.mock('./diagrams/user-journey/journeyRenderer.js');
+vi.mock('./diagrams/pie/pieRenderer.js');
+vi.mock('./diagrams/packet/renderer.js');
+vi.mock('./diagrams/xychart/xychartRenderer.js');
+vi.mock('./diagrams/requirement/requirementRenderer.js');
+vi.mock('./diagrams/sequence/sequenceRenderer.js');
+
+// -------------------------------------
+
+import assignWithDepth from './assignWithDepth.js';
+import type { MermaidConfig } from './config.type.js';
+import mermaid from './mermaid.js';
+import mermaidAPI, {
   appendDivSvgG,
   cleanUpSvgCode,
+  createCssStyles,
+  createUserStyles,
   putIntoIFrame,
-} from './mermaidAPI';
-
-import assignWithDepth from './assignWithDepth';
+  removeExistingElements,
+} from './mermaidAPI.js';
 
 // --------------
 // Mocks
 //   To mock a module, first define a mock for it, then (if used explicitly in the tests) import it. Be sure the path points to exactly the same file as is imported in mermaidAPI (the module being tested)
-vi.mock('./styles', () => {
+vi.mock('./styles.js', () => {
   return {
     addStylesForDiagram: vi.fn(),
     default: vi.fn().mockReturnValue(' .userStyle { font-weight:bold; }'),
   };
 });
-import getStyles from './styles';
+
+import getStyles from './styles.js';
 
 vi.mock('stylis', () => {
   return {
@@ -35,13 +64,22 @@ vi.mock('stylis', () => {
     serialize: vi.fn().mockReturnValue('stylis serialized css'),
   };
 });
-import { compile, serialize } from 'stylis';
 
-import { MockedD3 } from './tests/MockedD3';
+import { compile, serialize } from 'stylis';
+import { Diagram } from './Diagram.js';
+import { decodeEntities, encodeEntities } from './utils.js';
+import { toBase64 } from './utils/base64.js';
+import { ClassDB } from './diagrams/class/classDb.js';
+import { FlowDB } from './diagrams/flowchart/flowDb.js';
+
+/**
+ * @see https://vitest.dev/guide/mocking.html Mock part of a module
+ * To investigate how to mock just some methods from a module - call the actual implementation and then mock others, e.g. so they can be spied on
+ */
 
 // -------------------------------------------------------------------------------------
 
-describe('mermaidAPI', function () {
+describe('mermaidAPI', () => {
   describe('encodeEntities', () => {
     it('removes the ending ; from style [text1]:[optional word]#[text2]; with ', () => {
       const text = 'style this; is ; everything :something#not-nothing; and this too;';
@@ -128,6 +166,7 @@ describe('mermaidAPI', function () {
     });
 
     it('decodesEntities', () => {
+      // cspell:ignore brrrr
       const result = cleanUpSvgCode('¶ß brrrr', true, true);
       expect(result).toEqual('; brrrr');
     });
@@ -139,7 +178,7 @@ describe('mermaidAPI', function () {
   });
 
   describe('putIntoIFrame', () => {
-    const inputSvgCode = 'this is the SVG code';
+    const inputSvgCode = 'this is the SVG code ⛵';
 
     it('uses the default SVG iFrame height is used if no svgElement given', () => {
       const result = putIntoIFrame(inputSvgCode);
@@ -162,11 +201,10 @@ describe('mermaidAPI', function () {
     });
 
     it('sets src to base64 version of <body style="IFRAME_SVG_BODY_STYLE">svgCode<//body>', () => {
-      const base64encodedSrc = btoa('<body style="' + 'margin:0' + '">' + inputSvgCode + '</body>');
-      const expectedRegExp = new RegExp('src="data:text/html;base64,' + base64encodedSrc + '"');
-
+      const base64encodedSrc = toBase64(`<body style="margin:0">${inputSvgCode}</body>`);
+      const expectedSrc = `src="data:text/html;charset=UTF-8;base64,${base64encodedSrc}"`;
       const result = putIntoIFrame(inputSvgCode);
-      expect(result).toMatch(expectedRegExp);
+      expect(result).toContain(expectedSrc);
     });
 
     it('uses the height and appends px from the svgElement given', () => {
@@ -196,6 +234,8 @@ describe('mermaidAPI', function () {
     const svg_append_spy = vi.spyOn(fauxSvgNode, 'append').mockReturnValue(fauxGNode);
     // @ts-ignore @todo TODO why is this getting a type error?
     const svg_attr_spy = vi.spyOn(fauxSvgNode, 'attr').mockReturnValue(fauxSvgNode);
+
+    // cspell:ignore dthe
 
     it('appends a div node', () => {
       appendDivSvgG(fauxParentNode, 'theId', 'dtheId');
@@ -252,15 +292,15 @@ describe('mermaidAPI', function () {
     };
 
     it('gets the cssStyles from the theme', () => {
-      const styles = createCssStyles(mocked_config_with_htmlLabels, 'graphType', null);
+      const styles = createCssStyles(mocked_config_with_htmlLabels, null);
       expect(styles).toMatch(/^\ndefault(.*)/);
     });
     it('gets the fontFamily from the config', () => {
-      const styles = createCssStyles(mocked_config_with_htmlLabels, 'graphType', {});
+      const styles = createCssStyles(mocked_config_with_htmlLabels, new Map());
       expect(styles).toMatch(/(.*)\n:root { --mermaid-font-family: serif(.*)/);
     });
     it('gets the alt fontFamily from the config', () => {
-      const styles = createCssStyles(mocked_config_with_htmlLabels, 'graphType', undefined);
+      const styles = createCssStyles(mocked_config_with_htmlLabels, undefined);
       expect(styles).toMatch(/(.*)\n:root { --mermaid-alt-font-family: sans-serif(.*)/);
     });
 
@@ -271,8 +311,6 @@ describe('mermaidAPI', function () {
       const classDefs = { classDef1, classDef2, classDef3 };
 
       describe('the graph supports classDefs', () => {
-        const graphType = 'flowchart-v2';
-
         const REGEXP_SPECIALS = ['^', '$', '?', '(', '{', '[', '.', '*', '!'];
 
         // prefix any special RegExp characters in the given string with a \ so we can use the literal character in a RegExp
@@ -335,9 +373,10 @@ describe('mermaidAPI', function () {
             const htmlElements = ['> *', 'span'];
 
             it('creates CSS styles for every style and textStyle in every classDef', () => {
-              // @todo TODO Can't figure out how to spy on the cssImportantStyles method. That would be a much better approach than manually checking the result
+              // @todo TODO Can't figure out how to spy on the cssImportantStyles method.
+              //   That would be a much better approach than manually checking the result
 
-              const styles = createCssStyles(mocked_config, graphType, classDefs);
+              const styles = createCssStyles(mocked_config, new Map(Object.entries(classDefs)));
               htmlElements.forEach((htmlElement) => {
                 expect_styles_matchesHtmlElements(styles, htmlElement);
               });
@@ -373,9 +412,12 @@ describe('mermaidAPI', function () {
             const htmlElements = ['rect', 'polygon', 'ellipse', 'circle'];
 
             it('creates CSS styles for every style and textStyle in every classDef', () => {
-              // @todo TODO Can't figure out how to spy on the cssImportantStyles method. That would be a much better approach than manually checking the result
+              // TODO Can't figure out how to spy on the cssImportantStyles method. That would be a much better approach than manually checking the result.
 
-              const styles = createCssStyles(mocked_config_no_htmlLabels, graphType, classDefs);
+              const styles = createCssStyles(
+                mocked_config_no_htmlLabels,
+                new Map(Object.entries(classDefs))
+              );
               htmlElements.forEach((htmlElement) => {
                 expect_styles_matchesHtmlElements(styles, htmlElement);
               });
@@ -399,7 +441,7 @@ describe('mermaidAPI', function () {
     it('gets the css styles created', () => {
       // @todo TODO if a single function in the module can be mocked, do it for createCssStyles and mock the results.
 
-      createUserStyles(mockConfig, 'flowchart-v2', { classDef1 }, 'someId');
+      createUserStyles(mockConfig, 'flowchart-v2', new Map([['classDef1', classDef1]]), 'someId');
       const expectedStyles =
         '\ndefault' +
         '\n.classDef1 > * { style1-1 !important; }' +
@@ -410,12 +452,12 @@ describe('mermaidAPI', function () {
     });
 
     it('calls getStyles to get css for all graph, user css styles, and config theme variables', () => {
-      createUserStyles(mockConfig, 'someDiagram', {}, 'someId');
+      createUserStyles(mockConfig, 'someDiagram', new Map(), 'someId');
       expect(getStyles).toHaveBeenCalled();
     });
 
     it('returns the result of compiling, stringifying, and serializing the css code with stylis', () => {
-      const result = createUserStyles(mockConfig, 'someDiagram', {}, 'someId');
+      const result = createUserStyles(mockConfig, 'someDiagram', new Map(), 'someId');
       expect(compile).toHaveBeenCalled();
       expect(serialize).toHaveBeenCalled();
       expect(result).toEqual('stylis serialized css');
@@ -434,71 +476,58 @@ describe('mermaidAPI', function () {
     svgElement.id = svgId;
     const tempDivElement = givenDocument.createElement('div'); // doesn't matter what the tag is in the test
     tempDivElement.id = tempDivId;
-    const tempiFrameElement = givenDocument.createElement('div'); // doesn't matter what the tag is in the test
+    const tempiFrameElement = givenDocument.createElement('iframe'); // doesn't matter what the tag is in the test
     tempiFrameElement.id = tempIframeId;
 
     it('removes an existing element with given id', () => {
       rootHtml.appendChild(svgElement);
+      rootHtml.append(tempDivElement);
+      rootHtml.append(tempiFrameElement);
+
       expect(givenDocument.getElementById(svgElement.id)).toEqual(svgElement);
-      removeExistingElements(givenDocument, false, svgId, tempDivId, tempIframeId);
+      expect(givenDocument.getElementById(tempDivElement.id)).toEqual(tempDivElement);
+      expect(givenDocument.getElementById(tempiFrameElement.id)).toEqual(tempiFrameElement);
+      removeExistingElements(givenDocument, svgId, tempDivId, tempIframeId);
       expect(givenDocument.getElementById(svgElement.id)).toBeNull();
+      expect(givenDocument.getElementById(tempDivElement.id)).toBeNull();
+      expect(givenDocument.getElementById(tempiFrameElement.id)).toBeNull();
     });
 
-    describe('is in sandboxed mode', () => {
-      const inSandboxedMode = true;
+    it('removes an existing iframe element even if div element is absent', () => {
+      tempiFrameElement.append(svgElement);
+      rootHtml.append(tempiFrameElement);
 
-      it('removes an existing element with the given iFrame selector', () => {
-        tempiFrameElement.append(svgElement);
-        rootHtml.append(tempiFrameElement);
-        rootHtml.append(tempDivElement);
-
-        expect(givenDocument.getElementById(tempIframeId)).toEqual(tempiFrameElement);
-        expect(givenDocument.getElementById(tempDivId)).toEqual(tempDivElement);
-        expect(givenDocument.getElementById(svgId)).toEqual(svgElement);
-        removeExistingElements(
-          givenDocument,
-          inSandboxedMode,
-          svgId,
-          '#' + tempDivId,
-          '#' + tempIframeId
-        );
-        expect(givenDocument.getElementById(tempDivId)).toEqual(tempDivElement);
-        expect(givenDocument.getElementById(tempIframeId)).toBeNull();
-        expect(givenDocument.getElementById(svgId)).toBeNull();
-      });
+      expect(givenDocument.getElementById(tempIframeId)).toEqual(tempiFrameElement);
+      expect(givenDocument.getElementById(tempDivId)).toBeNull();
+      expect(givenDocument.getElementById(svgId)).toEqual(svgElement);
+      removeExistingElements(givenDocument, svgId, tempDivId, tempIframeId);
+      expect(givenDocument.getElementById(tempDivId)).toBeNull();
+      expect(givenDocument.getElementById(tempIframeId)).toBeNull();
+      expect(givenDocument.getElementById(svgId)).toBeNull();
     });
-    describe('not in sandboxed mode', () => {
-      const inSandboxedMode = false;
 
-      it('removes an existing element with the given enclosing div selector', () => {
-        tempDivElement.append(svgElement);
-        rootHtml.append(tempDivElement);
-        rootHtml.append(tempiFrameElement);
+    it('removes both existing div and iframe elements when both are present', () => {
+      tempDivElement.append(svgElement);
+      rootHtml.append(tempDivElement);
+      rootHtml.append(tempiFrameElement);
 
-        expect(givenDocument.getElementById(tempIframeId)).toEqual(tempiFrameElement);
-        expect(givenDocument.getElementById(tempDivId)).toEqual(tempDivElement);
-        expect(givenDocument.getElementById(svgId)).toEqual(svgElement);
-        removeExistingElements(
-          givenDocument,
-          inSandboxedMode,
-          svgId,
-          '#' + tempDivId,
-          '#' + tempIframeId
-        );
-        expect(givenDocument.getElementById(tempIframeId)).toEqual(tempiFrameElement);
-        expect(givenDocument.getElementById(tempDivId)).toBeNull();
-        expect(givenDocument.getElementById(svgId)).toBeNull();
-      });
+      expect(givenDocument.getElementById(tempIframeId)).toEqual(tempiFrameElement);
+      expect(givenDocument.getElementById(tempDivId)).toEqual(tempDivElement);
+      expect(givenDocument.getElementById(svgId)).toEqual(svgElement);
+      removeExistingElements(givenDocument, svgId, tempDivId, tempIframeId);
+      expect(givenDocument.getElementById(tempIframeId)).toBeNull();
+      expect(givenDocument.getElementById(tempDivId)).toBeNull();
+      expect(givenDocument.getElementById(svgId)).toBeNull();
     });
   });
 
-  describe('initialize', function () {
-    beforeEach(function () {
+  describe('initialize', () => {
+    beforeEach(() => {
       document.body.innerHTML = '';
       mermaidAPI.globalReset();
     });
 
-    it('copies a literal into the configuration', function () {
+    it('copies a literal into the configuration', () => {
       const orgConfig: any = mermaidAPI.getConfig();
       expect(orgConfig.testLiteral).toBe(undefined);
 
@@ -510,7 +539,7 @@ describe('mermaidAPI', function () {
       expect(config.testLiteral).toBe(true);
     });
 
-    it('copies a an object into the configuration', function () {
+    it('copies an object into the configuration', () => {
       const orgConfig: any = mermaidAPI.getConfig();
       expect(orgConfig.testObject).toBe(undefined);
 
@@ -536,11 +565,11 @@ describe('mermaidAPI', function () {
       expect(config.testObject.test3).toBe(true);
     });
 
-    it('resets mermaid config to global defaults', function () {
+    it('resets mermaid config to global defaults', () => {
       const config = {
         logLevel: 0,
         securityLevel: 'loose',
-      };
+      } as const;
       mermaidAPI.initialize(config);
       mermaidAPI.setConfig({ securityLevel: 'strict', logLevel: 1 });
       expect(mermaidAPI.getConfig().logLevel).toBe(1);
@@ -553,7 +582,7 @@ describe('mermaidAPI', function () {
       expect(mermaidAPI.getConfig().securityLevel).toBe('strict');
     });
 
-    it('prevents changes to site defaults (sneaky)', function () {
+    it('prevents changes to site defaults (sneaky)', () => {
       const config: any = {
         logLevel: 0,
       };
@@ -561,46 +590,45 @@ describe('mermaidAPI', function () {
       const siteConfig = mermaidAPI.getSiteConfig();
       expect(mermaidAPI.getConfig().logLevel).toBe(0);
       config.secure = {
-        toString: function () {
+        toString: () => {
           mermaidAPI.initialize({ securityLevel: 'loose' });
         },
       };
-      // mermaidAPI.reinitialize(config);
       expect(mermaidAPI.getConfig().secure).toEqual(mermaidAPI.getSiteConfig().secure);
       expect(mermaidAPI.getConfig().securityLevel).toBe('strict');
       mermaidAPI.reset();
       expect(mermaidAPI.getSiteConfig()).toEqual(siteConfig);
       expect(mermaidAPI.getConfig()).toEqual(siteConfig);
     });
-    it('prevents clobbering global defaults (direct)', function () {
+    it('prevents clobbering global defaults (direct)', () => {
       const config = assignWithDepth({}, mermaidAPI.defaultConfig);
       assignWithDepth(config, { logLevel: 0 });
 
       let error: any = { message: '' };
       try {
         // @ts-ignore This is a read-only property. Typescript will not allow assignment, but regular javascript might.
-        mermaidAPI['defaultConfig'] = config;
+        mermaidAPI.defaultConfig = config;
       } catch (e) {
         error = e;
       }
       expect(error.message).toBe(
         "Cannot assign to read only property 'defaultConfig' of object '#<Object>'"
       );
-      expect(mermaidAPI.defaultConfig['logLevel']).toBe(5);
+      expect(mermaidAPI.defaultConfig.logLevel).toBe(5);
     });
-    it('prevents changes to global defaults (direct)', function () {
+    it('prevents changes to global defaults (direct)', () => {
       let error: any = { message: '' };
       try {
-        mermaidAPI.defaultConfig['logLevel'] = 0;
+        mermaidAPI.defaultConfig.logLevel = 0;
       } catch (e) {
         error = e;
       }
       expect(error.message).toBe(
         "Cannot assign to read only property 'logLevel' of object '#<Object>'"
       );
-      expect(mermaidAPI.defaultConfig['logLevel']).toBe(5);
+      expect(mermaidAPI.defaultConfig.logLevel).toBe(5);
     });
-    it('prevents sneaky changes to global defaults (assignWithDepth)', function () {
+    it('prevents sneaky changes to global defaults (assignWithDepth)', () => {
       const config = {
         logLevel: 0,
       };
@@ -613,37 +641,286 @@ describe('mermaidAPI', function () {
       expect(error.message).toBe(
         "Cannot assign to read only property 'logLevel' of object '#<Object>'"
       );
-      expect(mermaidAPI.defaultConfig['logLevel']).toBe(5);
+      expect(mermaidAPI.defaultConfig.logLevel).toBe(5);
     });
   });
-  describe('dompurify config', function () {
-    it('allows dompurify config to be set', function () {
+
+  describe('dompurify config', () => {
+    it('allows dompurify config to be set', () => {
       mermaidAPI.initialize({ dompurifyConfig: { ADD_ATTR: ['onclick'] } });
 
-      expect(mermaidAPI!.getConfig()!.dompurifyConfig!.ADD_ATTR).toEqual(['onclick']);
+      expect(mermaidAPI.getConfig().dompurifyConfig!.ADD_ATTR).toEqual(['onclick']);
     });
   });
-  describe('parse', function () {
+
+  describe('parse', () => {
     mermaid.parseError = undefined; // ensure it parseError undefined
-    it('throws for an invalid definition (with no mermaid.parseError() defined)', function () {
+    it('throws for an invalid definition (with no mermaid.parseError() defined)', async () => {
       expect(mermaid.parseError).toEqual(undefined);
-      expect(() => mermaidAPI.parse('this is not a mermaid diagram definition')).toThrow();
+      await expect(
+        mermaidAPI.parse('this is not a mermaid diagram definition')
+      ).rejects.toThrowError();
     });
-    it('does not throw for a valid definition', function () {
-      expect(() => mermaidAPI.parse('graph TD;A--x|text including URL space|B;')).not.toThrow();
+    it('throws for a nicer error for a invalid definition starting with `---`', async () => {
+      expect(mermaid.parseError).toEqual(undefined);
+      await expect(
+        mermaidAPI.parse(`
+      ---
+      title: a malformed YAML front-matter
+      `)
+      ).rejects.toThrow(
+        'Diagrams beginning with --- are not valid. ' +
+          'If you were trying to use a YAML front-matter, please ensure that ' +
+          "you've correctly opened and closed the YAML front-matter with un-indented `---` blocks"
+      );
     });
-    it('returns false for invalid definition WITH a parseError() callback defined', function () {
-      let parseErrorWasCalled = false;
-      // also test setParseErrorHandler() call working to set mermaid.parseError
-      expect(
-        mermaidAPI.parse('this is not a mermaid diagram definition', () => {
-          parseErrorWasCalled = true;
-        })
-      ).toEqual(false);
-      expect(parseErrorWasCalled).toEqual(true);
+    it('does not throw for a valid definition', async () => {
+      await expect(
+        mermaidAPI.parse('graph TD;A--x|text including URL space|B;')
+      ).resolves.not.toThrow();
     });
-    it('returns true for valid definition', function () {
-      expect(mermaidAPI.parse('graph TD;A--x|text including URL space|B;')).toEqual(true);
+    it('throws for invalid definition', async () => {
+      await expect(
+        mermaidAPI.parse('this is not a mermaid diagram definition')
+      ).rejects.toThrowErrorMatchingInlineSnapshot(
+        `[UnknownDiagramError: No diagram type detected matching given configuration for text: this is not a mermaid diagram definition]`
+      );
     });
+    it('returns false for invalid definition with silent option', async () => {
+      await expect(
+        mermaidAPI.parse('this is not a mermaid diagram definition', { suppressErrors: true })
+      ).resolves.toBe(false);
+    });
+    it('resolves for valid definition', async () => {
+      await expect(mermaidAPI.parse('graph TD;A--x|text including URL space|B;')).resolves
+        .toMatchInlineSnapshot(`
+        {
+          "config": {},
+          "diagramType": "flowchart-v2",
+        }
+      `);
+    });
+    it('returns config when defined in frontmatter', async () => {
+      await expect(
+        mermaidAPI.parse(`---
+config:
+  theme: base
+  flowchart:
+    htmlLabels: true
+---
+graph TD;A--x|text including URL space|B;`)
+      ).resolves.toMatchInlineSnapshot(`
+  {
+    "config": {
+      "flowchart": {
+        "htmlLabels": true,
+      },
+      "theme": "base",
+    },
+    "diagramType": "flowchart-v2",
+  }
+`);
+    });
+
+    it('returns config when defined in directive', async () => {
+      await expect(
+        mermaidAPI.parse(`%%{init: { 'theme': 'base' } }%%
+graph TD;A--x|text including URL space|B;`)
+      ).resolves.toMatchInlineSnapshot(`
+  {
+    "config": {
+      "theme": "base",
+    },
+    "diagramType": "flowchart-v2",
+  }
+`);
+    });
+
+    it('returns merged config when defined in frontmatter and directive', async () => {
+      await expect(
+        mermaidAPI.parse(`---
+config:
+  theme: forest
+  flowchart:
+    htmlLabels: true
+---
+%%{init: { 'theme': 'base' } }%%
+graph TD;A--x|text including URL space|B;`)
+      ).resolves.toMatchInlineSnapshot(`
+  {
+    "config": {
+      "flowchart": {
+        "htmlLabels": true,
+      },
+      "theme": "base",
+    },
+    "diagramType": "flowchart-v2",
+  }
+`);
+    });
+
+    it('returns true for valid definition with silent option', async () => {
+      await expect(
+        mermaidAPI.parse('graph TD;A--x|text including URL space|B;', { suppressErrors: true })
+      ).resolves.toMatchInlineSnapshot(`
+          {
+            "config": {},
+            "diagramType": "flowchart-v2",
+          }
+        `);
+    });
+  });
+
+  describe('render', () => {
+    // These are more like integration tests right now because nothing is mocked.
+    // But it is faster that a cypress test and there's no real reason to actually evaluate an image pixel by pixel.
+
+    // render(id, text, cb?, svgContainingElement?)
+
+    // Test all diagram types.  Note that old flowchart 'graph' type will invoke the flowRenderer-v2. (See the flowchart v2 detector.)
+    // We have to have both the specific textDiagramType and the expected type name because the expected type may be slightly different than was is put in the diagram text (ex: in -v2 diagrams)
+    const diagramTypesAndExpectations = [
+      { textDiagramType: 'C4Context', expectedType: 'c4' },
+      { textDiagramType: 'classDiagram', expectedType: 'class' },
+      { textDiagramType: 'classDiagram-v2', expectedType: 'classDiagram' },
+      { textDiagramType: 'erDiagram', expectedType: 'er' },
+      { textDiagramType: 'graph', expectedType: 'flowchart-v2' },
+      { textDiagramType: 'flowchart', expectedType: 'flowchart-v2' },
+      { textDiagramType: 'gitGraph', expectedType: 'gitGraph' },
+      { textDiagramType: 'gantt', expectedType: 'gantt' },
+      { textDiagramType: 'journey', expectedType: 'journey' },
+      { textDiagramType: 'pie', expectedType: 'pie' },
+      { textDiagramType: 'packet-beta', expectedType: 'packet' },
+      { textDiagramType: 'xychart-beta', expectedType: 'xychart' },
+      { textDiagramType: 'requirementDiagram', expectedType: 'requirement' },
+      { textDiagramType: 'sequenceDiagram', expectedType: 'sequence' },
+      { textDiagramType: 'stateDiagram-v2', expectedType: 'stateDiagram' },
+    ];
+
+    describe('accessibility', () => {
+      const id = 'mermaid-fauxId';
+      const a11yTitle = 'a11y title';
+      const a11yDescr = 'a11y description';
+
+      diagramTypesAndExpectations.forEach((testedDiagram) => {
+        describe(`${testedDiagram.textDiagramType}`, () => {
+          const diagramType = testedDiagram.textDiagramType;
+          const diagramText = `${diagramType}\n accTitle: ${a11yTitle}\n accDescr: ${a11yDescr}\n`;
+          const expectedDiagramType = testedDiagram.expectedType;
+
+          it('should set aria-roledescription to the diagram type AND should call addSVGa11yTitleDescription', async () => {
+            const a11yDiagramInfo_spy = vi.spyOn(accessibility, 'setA11yDiagramInfo');
+            const a11yTitleDesc_spy = vi.spyOn(accessibility, 'addSVGa11yTitleDescription');
+            const result = await mermaidAPI.render(id, diagramText);
+            expect(result.diagramType).toBe(expectedDiagramType);
+            expect(a11yDiagramInfo_spy).toHaveBeenCalledWith(
+              expect.anything(),
+              expectedDiagramType
+            );
+            expect(a11yTitleDesc_spy).toHaveBeenCalled();
+          });
+        });
+      });
+    });
+  });
+
+  describe('getDiagramFromText', () => {
+    it('should clean up comments when present in diagram definition', async () => {
+      const diagram = await mermaidAPI.getDiagramFromText(
+        `flowchart LR
+      %% This is a comment A -- text --> B{node}
+      A -- text --> B -- text2 --> C`
+      );
+      expect(diagram).toBeInstanceOf(Diagram);
+      expect(diagram.type).toBe('flowchart-v2');
+    });
+
+    it('should not modify db when rendering different diagrams', async () => {
+      const flowDiagram1 = await mermaidAPI.getDiagramFromText(
+        `flowchart LR
+      A -- text --> B -- text2 --> C`
+      );
+      const flowDiagram2 = await mermaidAPI.getDiagramFromText(
+        `flowchart TD
+      A -- text --> B -- text2 --> C`
+      );
+      // Since flowDiagram will return new Db object each time, we can compare the db to be different.
+      expect(flowDiagram1.db).not.toBe(flowDiagram2.db);
+      assert(flowDiagram1.db instanceof FlowDB);
+      assert(flowDiagram2.db instanceof FlowDB);
+      expect(flowDiagram1.db.getDirection()).not.toEqual(flowDiagram2.db.getDirection());
+
+      const classDiagram1 = await mermaidAPI.getDiagramFromText(
+        `classDiagram
+            direction TB
+            class Student {
+              -idCard : IdCard
+            }
+            class IdCard{
+              -id : int
+              -name : string
+            }
+            class Bike{
+              -id : int
+              -name : string
+            }
+            Student "1" --o "1" IdCard : carries
+            Student "1" --o "1" Bike : rides`
+      );
+      const classDiagram2 = await mermaidAPI.getDiagramFromText(
+        `classDiagram
+            direction LR
+            class Student {
+              -idCard : IdCard
+            }
+            class IdCard{
+              -id : int
+              -name : string
+            }
+            class Bike{
+              -id : int
+              -name : string
+            }
+            Student "1" --o "1" IdCard : carries
+            Student "1" --o "1" Bike : rides`
+      );
+      // Since classDiagram will return new Db object each time, we can compare the db to be different.
+      expect(classDiagram1.db).not.toBe(classDiagram2.db);
+      assert(classDiagram1.db instanceof ClassDB);
+      assert(classDiagram2.db instanceof ClassDB);
+      expect(classDiagram1.db.getDirection()).not.toEqual(classDiagram2.db.getDirection());
+
+      const sequenceDiagram1 = await mermaidAPI.getDiagramFromText(
+        `sequenceDiagram
+    Alice->>+John: Hello John, how are you?
+    Alice->>+John: John, can you hear me?
+    John-->>-Alice: Hi Alice, I can hear you!
+    John-->>-Alice: I feel great!`
+      );
+      const sequenceDiagram2 = await mermaidAPI.getDiagramFromText(
+        `sequenceDiagram
+    Alice->>+John: Hello John, how are you?
+    Alice->>+John: John, can you hear me?
+    John-->>-Alice: Hi Alice, I can hear you!
+    John-->>-Alice: I feel great!`
+      );
+      // Since sequenceDiagram will return same Db object each time, we can compare the db to be same.
+      expect(sequenceDiagram1.db).toBe(sequenceDiagram2.db);
+    });
+  });
+
+  // Sequence Diagram currently uses a singleton DB, so this test will fail
+  it.fails('should not modify db when rendering different sequence diagrams', async () => {
+    const sequenceDiagram1 = await mermaidAPI.getDiagramFromText(
+      `sequenceDiagram
+    Alice->>Bob: Hello Bob, how are you?
+    Bob-->>John: How about you John?`
+    );
+    const sequenceDiagram2 = await mermaidAPI.getDiagramFromText(
+      `sequenceDiagram
+    Alice->>Bob: Hello Bob, how are you?
+    Bob-->>John: How about you John?`
+    );
+    expect(sequenceDiagram1.db).not.toBe(sequenceDiagram2.db);
   });
 });

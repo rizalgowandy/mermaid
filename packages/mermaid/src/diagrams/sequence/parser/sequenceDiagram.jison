@@ -3,7 +3,7 @@
  *  (c) 2014-2015 Knut Sveidqvist
  *  MIT license.
  *
- *  Based on js sequence diagrams jison grammr
+ *  Based on js sequence diagrams jison grammar
  *  https://bramp.github.io/js-sequence-diagrams/
  *  (c) 2012-2013 Andrew Brampton (bramp.net)
  *  Simplified BSD license.
@@ -16,28 +16,24 @@
 // A special state for grabbing text up to the first comment/newline
 %x ID ALIAS LINE
 
-// Directive states
-%x open_directive type_directive arg_directive
 %x acc_title
 %x acc_descr
 %x acc_descr_multiline
 %%
 
-\%\%\{                                                          { this.begin('open_directive'); return 'open_directive'; }
-<open_directive>((?:(?!\}\%\%)[^:.])*)                          { this.begin('type_directive'); return 'type_directive'; }
-<type_directive>":"                                             { this.popState(); this.begin('arg_directive'); return ':'; }
-<type_directive,arg_directive>\}\%\%                            { this.popState(); this.popState(); return 'close_directive'; }
-<arg_directive>((?:(?!\}\%\%).|\n)*)                            return 'arg_directive';
 [\n]+                                                           return 'NEWLINE';
 \s+                                                             /* skip all whitespace */
 <ID,ALIAS,LINE>((?!\n)\s)+                                      /* skip same-line whitespace */
-<INITIAL,ID,ALIAS,LINE,arg_directive,type_directive,open_directive>\#[^\n]*   /* skip comments */
+<INITIAL,ID,ALIAS,LINE>\#[^\n]*   															/* skip comments */
 \%%(?!\{)[^\n]*                                                 /* skip comments */
 [^\}]\%\%[^\n]*                                                 /* skip comments */
 [0-9]+(?=[ \n]+)       											return 'NUM';
+"box"															{ this.begin('LINE'); return 'box'; }
 "participant"                                                   { this.begin('ID'); return 'participant'; }
-"actor"                                                   	{ this.begin('ID'); return 'participant_actor'; }
-<ID>[^\->:\n,;]+?([\-]*[^\->:\n,;]+?)*?(?=((?!\n)\s)+"as"(?!\n)\s|[#\n;]|$)     { yytext = yytext.trim(); this.begin('ALIAS'); return 'ACTOR'; }
+"actor"                                                   		{ this.begin('ID'); return 'participant_actor'; }
+"create"                                                        return 'create';
+"destroy"                                                       { this.begin('ID'); return 'destroy'; }
+<ID>[^\<->\->:\n,;]+?([\-]*[^\<->\->:\n,;]+?)*?(?=((?!\n)\s)+"as"(?!\n)\s|[#\n;]|$)     { yytext = yytext.trim(); this.begin('ALIAS'); return 'ACTOR'; }
 <ALIAS>"as"                                                     { this.popState(); this.popState(); this.begin('LINE'); return 'AS'; }
 <ALIAS>(?:)                                                     { this.popState(); this.popState(); return 'NEWLINE'; }
 "loop"                                                          { this.begin('LINE'); return 'loop'; }
@@ -46,6 +42,7 @@
 "alt"                                                           { this.begin('LINE'); return 'alt'; }
 "else"                                                          { this.begin('LINE'); return 'else'; }
 "par"                                                           { this.begin('LINE'); return 'par'; }
+"par_over" 														{ this.begin('LINE'); return 'par_over'; }
 "and"                                                           { this.begin('LINE'); return 'and'; }
 "critical"                                                      { this.begin('LINE'); return 'critical'; }
 "option"                                                        { this.begin('LINE'); return 'option'; }
@@ -76,9 +73,11 @@ accDescr\s*"{"\s*                                { this.begin("acc_descr_multili
 "off"															return 'off';
 ","                                                             return ',';
 ";"                                                             return 'NEWLINE';
-[^\+\->:\n,;]+((?!(\-x|\-\-x|\-\)|\-\-\)))[\-]*[^\+\->:\n,;]+)*             { yytext = yytext.trim(); return 'ACTOR'; }
+[^\+\<->\->:\n,;]+((?!(\-x|\-\-x|\-\)|\-\-\)))[\-]*[^\+\<->\->:\n,;]+)*             { yytext = yytext.trim(); return 'ACTOR'; }
 "->>"                                                           return 'SOLID_ARROW';
+"<<->>"                                                           return 'BIDIRECTIONAL_SOLID_ARROW';
 "-->>"                                                          return 'DOTTED_ARROW';
+"<<-->>"                                                          return 'BIDIRECTIONAL_DOTTED_ARROW';
 "->"                                                            return 'SOLID_OPEN_ARROW';
 "-->"                                                           return 'DOTTED_OPEN_ARROW';
 \-[x]                                                           return 'SOLID_CROSS';
@@ -102,7 +101,6 @@ accDescr\s*"{"\s*                                { this.begin("acc_descr_multili
 start
 	: SPACE start
 	| NEWLINE start
-	| directive start
 	| SD document { yy.apply($2);return $2; }
 	;
 
@@ -117,23 +115,33 @@ line
 	| NEWLINE { $$=[]; }
 	;
 
-directive
-  : openDirective typeDirective closeDirective 'NEWLINE'
-  | openDirective typeDirective ':' argDirective closeDirective 'NEWLINE'
-  ;
+box_section
+	: /* empty */ { $$ = [] }
+	| box_section box_line {$1.push($2);$$ = $1}
+	;
+
+box_line
+	: SPACE participant_statement { $$ = $2 }
+	| participant_statement { $$ = $1 }
+	| NEWLINE { $$=[]; }
+	;
+
 
 statement
-	: 'participant' actor 'AS' restOfLine 'NEWLINE' {$2.type='addParticipant';$2.description=yy.parseMessage($4); $$=$2;}
-	| 'participant' actor 'NEWLINE' {$2.type='addParticipant';$$=$2;}
-	| 'participant_actor' actor 'AS' restOfLine 'NEWLINE' {$2.type='addActor';$2.description=yy.parseMessage($4); $$=$2;}
-	| 'participant_actor' actor 'NEWLINE' {$2.type='addActor'; $$=$2;}
+	: participant_statement
+	| 'create' participant_statement {$2.type='createParticipant'; $$=$2;}
+	| 'box' restOfLine box_section end
+	{
+		$3.unshift({type: 'boxStart', boxData:yy.parseBoxData($2) });
+		$3.push({type: 'boxEnd', boxText:$2});
+		$$=$3;}
 	| signal 'NEWLINE'
 	| autonumber NUM NUM 'NEWLINE' { $$= {type:'sequenceIndex',sequenceIndex: Number($2), sequenceIndexStep:Number($3), sequenceVisible:true, signalType:yy.LINETYPE.AUTONUMBER};}
 	| autonumber NUM 'NEWLINE' { $$ = {type:'sequenceIndex',sequenceIndex: Number($2), sequenceIndexStep:1, sequenceVisible:true, signalType:yy.LINETYPE.AUTONUMBER};}
 	| autonumber off 'NEWLINE' { $$ = {type:'sequenceIndex', sequenceVisible:false, signalType:yy.LINETYPE.AUTONUMBER};}
 	| autonumber 'NEWLINE'  {$$ = {type:'sequenceIndex', sequenceVisible:true, signalType:yy.LINETYPE.AUTONUMBER}; }
-	| 'activate' actor 'NEWLINE' {$$={type: 'activeStart', signalType: yy.LINETYPE.ACTIVE_START, actor: $2};}
-	| 'deactivate' actor 'NEWLINE' {$$={type: 'activeEnd', signalType: yy.LINETYPE.ACTIVE_END, actor: $2};}
+	| 'activate' actor 'NEWLINE' {$$={type: 'activeStart', signalType: yy.LINETYPE.ACTIVE_START, actor: $2.actor};}
+	| 'deactivate' actor 'NEWLINE' {$$={type: 'activeEnd', signalType: yy.LINETYPE.ACTIVE_END, actor: $2.actor};}
 	| note_statement 'NEWLINE'
 	| links_statement 'NEWLINE'
 	| link_statement 'NEWLINE'
@@ -175,6 +183,14 @@ statement
 		// End
 		$3.push({type: 'parEnd', signalType: yy.LINETYPE.PAR_END});
 		$$=$3;}
+	| par_over restOfLine par_sections end
+	{
+		// Parallel (overlapped) start
+		$3.unshift({type: 'parStart', parText:yy.parseMessage($2), signalType: yy.LINETYPE.PAR_OVER_START});
+		// Content in par is already in $3
+		// End
+		$3.push({type: 'parEnd', signalType: yy.LINETYPE.PAR_END});
+		$$=$3;}
 	| critical restOfLine option_sections end
 	{
 		// critical start
@@ -188,7 +204,6 @@ statement
 		$3.unshift({type: 'breakStart', breakText:yy.parseMessage($2), signalType: yy.LINETYPE.BREAK_START});
 		$3.push({type: 'breakEnd', optText:yy.parseMessage($2), signalType: yy.LINETYPE.BREAK_END});
 		$$=$3;}
-  | directive
 	;
 
 option_sections
@@ -207,6 +222,14 @@ else_sections
 	: document
 	| document else restOfLine else_sections
 	{ $$ = $1.concat([{type: 'else', altText:yy.parseMessage($3), signalType: yy.LINETYPE.ALT_ELSE}, $4]); }
+	;
+
+participant_statement
+	: 'participant' actor 'AS' restOfLine 'NEWLINE' {$2.draw='participant'; $2.type='addParticipant';$2.description=yy.parseMessage($4); $$=$2;}
+	| 'participant' actor 'NEWLINE' {$2.draw='participant'; $2.type='addParticipant';$$=$2;}
+	| 'participant_actor' actor 'AS' restOfLine 'NEWLINE' {$2.draw='actor'; $2.type='addParticipant';$2.description=yy.parseMessage($4); $$=$2;}
+	| 'participant_actor' actor 'NEWLINE' {$2.draw='actor'; $2.type='addParticipant'; $$=$2;}
+	| 'destroy' actor 'NEWLINE' {$2.type='destroyParticipant'; $$=$2;}
 	;
 
 note_statement
@@ -266,12 +289,12 @@ placement
 
 signal
 	: actor signaltype '+' actor text2
-	{ $$ = [$1,$4,{type: 'addMessage', from:$1.actor, to:$4.actor, signalType:$2, msg:$5},
-	              {type: 'activeStart', signalType: yy.LINETYPE.ACTIVE_START, actor: $4}
+	{ $$ = [$1,$4,{type: 'addMessage', from:$1.actor, to:$4.actor, signalType:$2, msg:$5, activate: true},
+	              {type: 'activeStart', signalType: yy.LINETYPE.ACTIVE_START, actor: $4.actor}
 	             ]}
 	| actor signaltype '-' actor text2
 	{ $$ = [$1,$4,{type: 'addMessage', from:$1.actor, to:$4.actor, signalType:$2, msg:$5},
-	             {type: 'activeEnd', signalType: yy.LINETYPE.ACTIVE_END, actor: $1}
+	             {type: 'activeEnd', signalType: yy.LINETYPE.ACTIVE_END, actor: $1.actor}
 	             ]}
 	| actor signaltype actor text2
 	{ $$ = [$1,$3,{type: 'addMessage', from:$1.actor, to:$3.actor, signalType:$2, msg:$4}]}
@@ -289,7 +312,9 @@ signaltype
 	: SOLID_OPEN_ARROW  { $$ = yy.LINETYPE.SOLID_OPEN; }
 	| DOTTED_OPEN_ARROW { $$ = yy.LINETYPE.DOTTED_OPEN; }
 	| SOLID_ARROW       { $$ = yy.LINETYPE.SOLID; }
+  | BIDIRECTIONAL_SOLID_ARROW       { $$ = yy.LINETYPE.BIDIRECTIONAL_SOLID; }
 	| DOTTED_ARROW      { $$ = yy.LINETYPE.DOTTED; }
+	| BIDIRECTIONAL_DOTTED_ARROW      { $$ = yy.LINETYPE.BIDIRECTIONAL_DOTTED; }
 	| SOLID_CROSS       { $$ = yy.LINETYPE.SOLID_CROSS; }
 	| DOTTED_CROSS      { $$ = yy.LINETYPE.DOTTED_CROSS; }
 	| SOLID_POINT { $$ = yy.LINETYPE.SOLID_POINT; }
@@ -298,22 +323,6 @@ signaltype
 
 text2
   : TXT {$$ = yy.parseMessage($1.trim().substring(1)) }
-  ;
-
-openDirective
-  : open_directive { yy.parseDirective('%%{', 'open_directive'); }
-  ;
-
-typeDirective
-  : type_directive { yy.parseDirective($1, 'type_directive'); }
-  ;
-
-argDirective
-  : arg_directive { $1 = $1.trim().replace(/'/g, '"'); yy.parseDirective($1, 'arg_directive'); }
-  ;
-
-closeDirective
-  : close_directive { yy.parseDirective('}%%', 'close_directive', 'sequence'); }
   ;
 
 %%

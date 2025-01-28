@@ -1,6 +1,5 @@
-import * as configApi from '../../config';
-import { log } from '../../logger';
-import mermaidAPI from '../../mermaidAPI';
+import { getConfig } from '../../diagram-api/diagramAPI.js';
+import { log } from '../../logger.js';
 
 import {
   setAccTitle,
@@ -8,13 +7,13 @@ import {
   getAccDescription,
   setAccDescription,
   clear as commonClear,
-} from '../../commonDb';
+} from '../common/commonDb.js';
 
 let relations = [];
 let latestRequirement = {};
-let requirements = {};
+let requirements = new Map();
 let latestElement = {};
-let elements = {};
+let elements = new Map();
 
 const RequirementType = {
   REQUIREMENT: 'Requirement',
@@ -48,13 +47,9 @@ const Relationships = {
   TRACES: 'traces',
 };
 
-export const parseDirective = function (statement, context, type) {
-  mermaidAPI.parseDirective(this, statement, context, type);
-};
-
 const addRequirement = (name, type) => {
-  if (requirements[name] === undefined) {
-    requirements[name] = {
+  if (!requirements.has(name)) {
+    requirements.set(name, {
       name,
       type,
 
@@ -62,11 +57,11 @@ const addRequirement = (name, type) => {
       text: latestRequirement.text,
       risk: latestRequirement.risk,
       verifyMethod: latestRequirement.verifyMethod,
-    };
+    });
   }
   latestRequirement = {};
 
-  return requirements[name];
+  return requirements.get(name);
 };
 
 const getRequirements = () => requirements;
@@ -96,18 +91,17 @@ const setNewReqVerifyMethod = (verifyMethod) => {
 };
 
 const addElement = (name) => {
-  if (elements[name] === undefined) {
-    elements[name] = {
+  if (!elements.has(name)) {
+    elements.set(name, {
       name,
-
       type: latestElement.type,
       docRef: latestElement.docRef,
-    };
+    });
     log.info('Added new requirement: ', name);
   }
   latestElement = {};
 
-  return elements[name];
+  return elements.get(name);
 };
 
 const getElements = () => elements;
@@ -137,9 +131,9 @@ const getRelationships = () => relations;
 const clear = () => {
   relations = [];
   latestRequirement = {};
-  requirements = {};
+  requirements = new Map();
   latestElement = {};
-  elements = {};
+  elements = new Map();
   commonClear();
 };
 
@@ -149,8 +143,7 @@ export default {
   VerifyType,
   Relationships,
 
-  parseDirective,
-  getConfig: () => configApi.getConfig().req,
+  getConfig: () => getConfig().req,
 
   addRequirement,
   getRequirements,

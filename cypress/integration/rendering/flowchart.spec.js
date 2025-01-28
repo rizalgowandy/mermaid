@@ -1,4 +1,4 @@
-import { imgSnapshotTest, renderGraph } from '../../helpers/util';
+import { imgSnapshotTest, renderGraph } from '../../helpers/util.ts';
 
 describe('Graph', () => {
   it('1: should render a simple flowchart no htmlLabels', () => {
@@ -733,7 +733,7 @@ describe('Graph', () => {
   });
   it('38: should render a flowchart when useMaxWidth is true (default)', () => {
     renderGraph(
-      `graph TD
+      `flowchart TD
       A[Christmas] -->|Get money| B(Go shopping)
       B --> C{Let me think}
       C -->|One| D[Laptop]
@@ -751,7 +751,7 @@ describe('Graph', () => {
       const style = svg.attr('style');
       expect(style).to.match(/^max-width: [\d.]+px;$/);
       const maxWidthValue = parseFloat(style.match(/[\d.]+/g).join(''));
-      expect(maxWidthValue).to.be.within(300 * 0.9, 300 * 1.1);
+      expect(maxWidthValue).to.be.within(446 * 0.9, 446 * 1.1);
     });
   });
   it('39: should render a flowchart when useMaxWidth is false', () => {
@@ -770,7 +770,7 @@ describe('Graph', () => {
       const width = parseFloat(svg.attr('width'));
       // use within because the absolute value can be slightly different depending on the environment ±10%
       // expect(height).to.be.within(446 * 0.95, 446 * 1.05);
-      expect(width).to.be.within(300 * 0.9, 300 * 1.1);
+      expect(width).to.be.within(446 * 0.9, 446 * 1.1);
       expect(svg).to.not.have.attr('style');
     });
   });
@@ -889,6 +889,32 @@ graph TD
         class Lorem,Dolor dark
       `,
       { htmlLabels: true, flowchart: { htmlLabels: true }, securityLevel: 'loose' }
+    );
+  });
+  it('66: apply class called default on node called default', () => {
+    imgSnapshotTest(
+      `
+      graph TD
+        classDef default fill:#a34,stroke:#000,stroke-width:4px,color:#fff 
+        hello --> default
+      `,
+      { htmlLabels: true, flowchart: { htmlLabels: true }, securityLevel: 'loose' }
+    );
+  });
+
+  it('67: should be able to style default node independently', () => {
+    imgSnapshotTest(
+      `
+      flowchart TD
+      classDef default fill:#a34
+      hello --> default
+
+      style default stroke:#000,stroke-width:4px
+    `,
+      {
+        flowchart: { htmlLabels: true },
+        securityLevel: 'loose',
+      }
     );
   });
 });

@@ -1,6 +1,6 @@
 # Cluster handling
 
-Dagre does not support edges between nodes and clusters or between clusters to other clusters. In order to remedy this shortcoming the dagre wrapper implements a few work-arounds.
+Dagre does not support edges between nodes and clusters or between clusters to other clusters. In order to remedy this shortcoming the dagre wrapper implements a few workarounds.
 
 In the diagram below there are two clusters and there are no edges to nodes outside the own cluster.
 
@@ -24,7 +24,7 @@ flowchart
 
 The new nodes C1 and C2 are a special type of nodes, clusterNodes. ClusterNodes have have the nodes in the cluster including the cluster attached in a graph object.
 
-When rendering this diagram it it beeing rendered recursively. The diagram is rendered by the dagre-mermaid:render function which in turn will be used to render the node C1 and the node C2. The result of those renderings will be inserted as nodes in the "root" diagram. With this recursive approach it would be possible to have different layout direction for each cluster.
+When rendering this diagram it is being rendered recursively. The diagram is rendered by the dagre-mermaid:render function which in turn will be used to render the node C1 and the node C2. The result of those renderings will be inserted as nodes in the "root" diagram. With this recursive approach it would be possible to have different layout direction for each cluster.
 
 ```
 { clusterNode: true, graph }
@@ -45,7 +45,7 @@ flowchart
   a --> C2
 ```
 
-To handle this case a special type of edge is inserted. The edge to/from the cluster is replaced with an edge to/from a node in the cluster which is tagged with toCluster/fromCluster. When rendering this edge the intersection between the edge and the border of the cluster is calculated making the edge start/stop there. In practice this renders like an an edge to/from the cluster.
+To handle this case a special type of edge is inserted. The edge to/from the cluster is replaced with an edge to/from a node in the cluster which is tagged with toCluster/fromCluster. When rendering this edge the intersection between the edge and the border of the cluster is calculated making the edge start/stop there. In practice this renders like an edge to/from the cluster.
 
 In the diagram above the root diagram would be rendered with C1 whereas C2 would be rendered recursively.
 
@@ -73,7 +73,7 @@ Sample object:
 }
 ```
 
-This is set by the renderer of the diagram and insert the data that the wrapper neds for rendering.
+This is set by the renderer of the diagram and insert the data that the wrapper needs for rendering.
 
 | property   | description                                                                                      |
 | ---------- | ------------------------------------------------------------------------------------------------ |
@@ -114,7 +114,7 @@ Required edgeData for proper rendering:
 | label      | overlap between label and labelText?                                 |
 | labelPos   |                                                                      |
 | labelType  | overlap between label and labelText?                                 |
-| thickness  | Sets the thinkess of the edge. Can be \['normal', 'thick'\]          |
+| thickness  | Sets the thickness of the edge. Can be \['normal', 'thick'\]         |
 | pattern    | Sets the pattern of the edge. Can be \['solid', 'dotted', 'dashed'\] |
 
 # Markers

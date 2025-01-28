@@ -1,12 +1,12 @@
-import * as graphlibJson from 'dagre-d3-es/src/graphlib/json';
-import * as graphlib from 'dagre-d3-es/src/graphlib';
+import * as graphlibJson from 'dagre-d3-es/src/graphlib/json.js';
+import * as graphlib from 'dagre-d3-es/src/graphlib/index.js';
 import {
   validate,
   adjustClustersAndEdges,
   extractDescendants,
   sortNodesByHierarchy,
-} from './mermaid-graphlib';
-import { setLogLevel, log } from '../logger';
+} from './mermaid-graphlib.js';
+import { setLogLevel, log } from '../logger.js';
 
 describe('Graphlib decorations', () => {
   let g;
@@ -419,7 +419,7 @@ describe('extractDescendants', function () {
       return {};
     });
   });
-  it('Simple case of one level decendants GLB9', function () {
+  it('Simple case of one level descendants GLB9', function () {
     /*
     subgraph A
       a

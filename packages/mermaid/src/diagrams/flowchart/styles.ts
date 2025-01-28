@@ -1,3 +1,6 @@
+// import khroma from 'khroma';
+import * as khroma from 'khroma';
+
 /** Returns the styles given options */
 export interface FlowChartStyleOptions {
   arrowheadColor: string;
@@ -15,6 +18,18 @@ export interface FlowChartStyleOptions {
   titleColor: string;
 }
 
+const fade = (color: string, opacity: number) => {
+  // @ts-ignore TODO: incorrect types from khroma
+  const channel = khroma.channel;
+
+  const r = channel(color, 'r');
+  const g = channel(color, 'g');
+  const b = channel(color, 'b');
+
+  // @ts-ignore incorrect types from khroma
+  return khroma.rgba(r, g, b, opacity);
+};
+
 const getStyles = (options: FlowChartStyleOptions) =>
   `.label {
     font-family: ${options.fontFamily};
@@ -25,6 +40,9 @@ const getStyles = (options: FlowChartStyleOptions) =>
   }
   .cluster-label span {
     color: ${options.titleColor};
+  }
+  .cluster-label span p {
+    background-color: transparent;
   }
 
   .label text,span {
@@ -41,12 +59,34 @@ const getStyles = (options: FlowChartStyleOptions) =>
     stroke: ${options.nodeBorder};
     stroke-width: 1px;
   }
+  .rough-node .label text , .node .label text, .image-shape .label, .icon-shape .label {
+    text-anchor: middle;
+  }
+  // .flowchart-label .text-outer-tspan {
+  //   text-anchor: middle;
+  // }
+  // .flowchart-label .text-inner-tspan {
+  //   text-anchor: start;
+  // }
 
-  .node .label {
+  .node .katex path {
+    fill: #000;
+    stroke: #000;
+    stroke-width: 1px;
+  }
+
+  .rough-node .label,.node .label, .image-shape .label, .icon-shape .label {
     text-align: center;
   }
   .node.clickable {
     cursor: pointer;
+  }
+
+
+  .root .anchor path {
+    fill: ${options.lineColor} !important;
+    stroke-width: 0;
+    stroke: ${options.lineColor};
   }
 
   .arrowheadPath {
@@ -65,12 +105,21 @@ const getStyles = (options: FlowChartStyleOptions) =>
 
   .edgeLabel {
     background-color: ${options.edgeLabelBackground};
+    p {
+      background-color: ${options.edgeLabelBackground};
+    }
     rect {
       opacity: 0.5;
       background-color: ${options.edgeLabelBackground};
       fill: ${options.edgeLabelBackground};
     }
     text-align: center;
+  }
+
+  /* For html labels only */
+  .labelBkg {
+    background-color: ${fade(options.edgeLabelBackground, 0.5)};
+    // background-color:
   }
 
   .cluster rect {
@@ -108,6 +157,25 @@ const getStyles = (options: FlowChartStyleOptions) =>
     text-anchor: middle;
     font-size: 18px;
     fill: ${options.textColor};
+  }
+
+  rect.text {
+    fill: none;
+    stroke-width: 0;
+  }
+
+  .icon-shape, .image-shape {
+    background-color: ${options.edgeLabelBackground};
+    p {
+      background-color: ${options.edgeLabelBackground};
+      padding: 2px;
+    }
+    rect {
+      opacity: 0.5;
+      background-color: ${options.edgeLabelBackground};
+      fill: ${options.edgeLabelBackground};
+    }
+    text-align: center;
   }
 `;
 

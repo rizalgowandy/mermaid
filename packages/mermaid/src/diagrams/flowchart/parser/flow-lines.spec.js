@@ -1,6 +1,6 @@
-import flowDb from '../flowDb';
-import flow from './flow';
-import { setConfig } from '../../../config';
+import { FlowDB } from '../flowDb.js';
+import flow from './flowParser.ts';
+import { setConfig } from '../../../config.js';
 
 setConfig({
   securityLevel: 'strict',
@@ -8,7 +8,7 @@ setConfig({
 
 describe('[Lines] when parsing', () => {
   beforeEach(function () {
-    flow.parser.yy = flowDb;
+    flow.parser.yy = new FlowDB();
     flow.parser.yy.clear();
   });
 

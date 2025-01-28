@@ -27,16 +27,19 @@
 %x CLASSDEFID
 %x CLASS
 %x CLASS_STYLE
+
+// Style statement states
+%x STYLE
+%x STYLE_IDS
+%x STYLEDEF_STYLES
+%x STYLEDEF_STYLEOPTS
+
 %x NOTE
 %x NOTE_ID
 %x NOTE_TEXT
 %x FLOATING_NOTE
 %x FLOATING_NOTE_ID
 %x struct
-%x open_directive
-%x type_directive
-%x arg_directive
-%x close_directive
 
 // A special state for grabbing text up to the first comment/newline
 %x LINE
@@ -50,29 +53,24 @@
 .*direction\s+RL[^\n]*                                      return 'direction_rl';
 .*direction\s+LR[^\n]*                                      return 'direction_lr';
 
-\%\%\{                                                          { this.begin('open_directive'); return 'open_directive'; }
-<open_directive>((?:(?!\}\%\%)[^:.])*)                          { this.begin('type_directive'); return 'type_directive'; }
-<type_directive>":"                                             { this.popState(); this.begin('arg_directive'); return ':'; }
-<type_directive,arg_directive>\}\%\%                            { this.popState(); this.popState(); return 'close_directive'; }
-<arg_directive>((?:(?!\}\%\%).|\n)*)                            return 'arg_directive';
 \%\%(?!\{)[^\n]*                                                /* skip comments */
 [^\}]\%\%[^\n]*                                                 /* skip comments */{ /*console.log('Crap after close');*/ }
 
 [\n]+                            return 'NL';
 [\s]+                              /* skip all whitespace */
-<ID,STATE,struct,LINE,open_directive,type_directive,arg_directive,close_directive>((?!\n)\s)+       /* skip same-line whitespace */
-<INITIAL,ID,STATE,struct,LINE,open_directive,type_directive,arg_directive,close_directive>\#[^\n]*  /* skip comments */
+<ID,STATE,struct,LINE>((?!\n)\s)+       /* skip same-line whitespace */
+<INITIAL,ID,STATE,struct,LINE>\#[^\n]*  /* skip comments */
 \%%[^\n]*                        /* skip comments */
 "scale"\s+            { this.pushState('SCALE'); /* console.log('Got scale', yytext);*/ return 'scale'; }
 <SCALE>\d+            return 'WIDTH';
-<SCALE>\s+"width"     {this.popState();}
+<SCALE>\s+"width"     { this.popState(); }
 
 accTitle\s*":"\s*                                               { this.begin("acc_title");return 'acc_title'; }
 <acc_title>(?!\n|;|#)*[^\n]*                                    { this.popState(); return "acc_title_value"; }
 accDescr\s*":"\s*                                               { this.begin("acc_descr");return 'acc_descr'; }
 <acc_descr>(?!\n|;|#)*[^\n]*                                    { this.popState(); return "acc_descr_value"; }
-accDescr\s*"{"\s*                                { this.begin("acc_descr_multiline");}
-<acc_descr_multiline>[\}]                       { this.popState(); }
+accDescr\s*"{"\s*                                { this.begin("acc_descr_multiline"); }
+<acc_descr_multiline>[\}]                        { this.popState(); }
 <acc_descr_multiline>[^\}]*                     return "acc_descr_multiline_value";
 
 <INITIAL,struct>"classDef"\s+   { this.pushState('CLASSDEF'); return 'classDef'; }
@@ -81,57 +79,64 @@ accDescr\s*"{"\s*                                { this.begin("acc_descr_multili
 <CLASSDEFID>[^\n]*              { this.popState(); return 'CLASSDEF_STYLEOPTS' }
 
 <INITIAL,struct>"class"\s+      { this.pushState('CLASS'); return 'class'; }
-<CLASS>(\w+)+((","\s*\w+)*)       { this.popState(); this.pushState('CLASS_STYLE'); return 'CLASSENTITY_IDS' }
+<CLASS>(\w+)+((","\s*\w+)*)     { this.popState(); this.pushState('CLASS_STYLE'); return 'CLASSENTITY_IDS' }
 <CLASS_STYLE>[^\n]*             { this.popState(); return 'STYLECLASS' }
+
+<INITIAL,struct>"style"\s+   { this.pushState('STYLE'); return 'style'; }
+<STYLE>[\w,]+\s+                 { this.popState(); this.pushState('STYLEDEF_STYLES'); return 'STYLE_IDS' }
+<STYLEDEF_STYLES>[^\n]*              { this.popState(); return 'STYLEDEF_STYLEOPTS' }
 
 "scale"\s+            { this.pushState('SCALE'); /* console.log('Got scale', yytext);*/ return 'scale'; }
 <SCALE>\d+            return 'WIDTH';
 <SCALE>\s+"width"     {this.popState();}
 
+<INITIAL,struct>"state"\s+  { /* console.log('Starting STATE '); */ this.pushState('STATE'); }
 
-<INITIAL,struct>"state"\s+            { /*console.log('Starting STATE zxzx'+yy.getDirection());*/this.pushState('STATE'); }
 <STATE>.*"<<fork>>"                   {this.popState();yytext=yytext.slice(0,-8).trim(); /*console.warn('Fork Fork: ',yytext);*/return 'FORK';}
 <STATE>.*"<<join>>"                   {this.popState();yytext=yytext.slice(0,-8).trim();/*console.warn('Fork Join: ',yytext);*/return 'JOIN';}
-<STATE>.*"<<choice>>"                   {this.popState();yytext=yytext.slice(0,-10).trim();/*console.warn('Fork Join: ',yytext);*/return 'CHOICE';}
+<STATE>.*"<<choice>>"                 {this.popState();yytext=yytext.slice(0,-10).trim();/*console.warn('Fork Join: ',yytext);*/return 'CHOICE';}
 <STATE>.*"[[fork]]"                   {this.popState();yytext=yytext.slice(0,-8).trim();/*console.warn('Fork Fork: ',yytext);*/return 'FORK';}
 <STATE>.*"[[join]]"                   {this.popState();yytext=yytext.slice(0,-8).trim();/*console.warn('Fork Join: ',yytext);*/return 'JOIN';}
-<STATE>.*"[[choice]]"                   {this.popState();yytext=yytext.slice(0,-10).trim();/*console.warn('Fork Join: ',yytext);*/return 'CHOICE';}
+<STATE>.*"[[choice]]"                 {this.popState();yytext=yytext.slice(0,-10).trim();/*console.warn('Fork Join: ',yytext);*/return 'CHOICE';}
+
 <struct>.*direction\s+TB[^\n]*            { return 'direction_tb';}
 <struct>.*direction\s+BT[^\n]*            { return 'direction_bt';}
 <struct>.*direction\s+RL[^\n]*            { return 'direction_rl';}
 <struct>.*direction\s+LR[^\n]*            { return 'direction_lr';}
 
-<STATE>["]                   { /*console.log('Starting STATE_STRING zxzx');*/this.begin("STATE_STRING");}
-<STATE>\s*"as"\s+         {this.popState();this.pushState('STATE_ID');return "AS";}
-<STATE_ID>[^\n\{]*         {this.popState();/* console.log('STATE_ID', yytext);*/return "ID";}
-<STATE_STRING>["]              this.popState();
-<STATE_STRING>[^"]*         { /*console.log('Long description:', yytext);*/return "STATE_DESCR";}
-<STATE>[^\n\s\{]+      {/*console.log('COMPOSIT_STATE', yytext);*/return 'COMPOSIT_STATE';}
-<STATE>\n      {this.popState();}
-<INITIAL,STATE>\{               {this.popState();this.pushState('struct'); /*console.log('begin struct', yytext);*/return 'STRUCT_START';}
-<struct>\%\%(?!\{)[^\n]*                                       /* skip comments inside state*/
-<struct>\}           { /*console.log('Ending struct');*/ this.popState(); return 'STRUCT_STOP';}}
-<struct>[\n]              /* nothing */
+<STATE>["]                 { /* console.log('Starting STATE_STRING'); */ this.pushState("STATE_STRING"); }
+<STATE>\s*"as"\s+          { this.pushState('STATE_ID'); /* console.log('pushState(STATE_ID)'); */ return "AS"; }
+<STATE_ID>[^\n\{]*         { this.popState(); /* console.log('STATE_ID', yytext); */ return "ID"; }
+<STATE_STRING>["]          { this.popState(); }
+<STATE_STRING>[^"]*        { /* console.log('Long description:', yytext); */ return "STATE_DESCR"; }
+<STATE>[^\n\s\{]+          { /* console.log('COMPOSIT_STATE', yytext); */ return 'COMPOSIT_STATE'; }
+<STATE>\n                  { this.popState(); }
+<INITIAL,STATE>\{          { this.popState(); this.pushState('struct'); /* console.log('begin struct', yytext); */ return 'STRUCT_START'; }
+<struct>\%\%(?!\{)[^\n]*   /* skip comments inside state*/
+<struct>\}                 { /*console.log('Ending struct');*/ this.popState(); return 'STRUCT_STOP';} }
+<struct>[\n]               /* nothing */
 
 <INITIAL,struct>"note"\s+           { this.begin('NOTE'); return 'note'; }
-<NOTE>"left of"                     { this.popState();this.pushState('NOTE_ID');return 'left_of';}
-<NOTE>"right of"                    { this.popState();this.pushState('NOTE_ID');return 'right_of';}
-<NOTE>\"                            { this.popState();this.pushState('FLOATING_NOTE');}
-<FLOATING_NOTE>\s*"as"\s*       {this.popState();this.pushState('FLOATING_NOTE_ID');return "AS";}
-<FLOATING_NOTE>["]         /**/
-<FLOATING_NOTE>[^"]*         { /*console.log('Floating note text: ', yytext);*/return "NOTE_TEXT";}
-<FLOATING_NOTE_ID>[^\n]*         {this.popState();/*console.log('Floating note ID', yytext);*/return "ID";}
-<NOTE_ID>\s*[^:\n\s\-]+                { this.popState();this.pushState('NOTE_TEXT');/*console.log('Got ID for note', yytext);*/return 'ID';}
-<NOTE_TEXT>\s*":"[^:\n;]+       { this.popState();/*console.log('Got NOTE_TEXT for note',yytext);*/yytext = yytext.substr(2).trim();return 'NOTE_TEXT';}
-<NOTE_TEXT>[\s\S]*?"end note"       { this.popState();/*console.log('Got NOTE_TEXT for note',yytext);*/yytext = yytext.slice(0,-8).trim();return 'NOTE_TEXT';}
+<NOTE>"left of"                     { this.popState(); this.pushState('NOTE_ID'); return 'left_of'; }
+<NOTE>"right of"                    { this.popState(); this.pushState('NOTE_ID'); return 'right_of'; }
+<NOTE>\"                            { this.popState(); this.pushState('FLOATING_NOTE'); }
+<FLOATING_NOTE>\s*"as"\s*           { this.popState(); this.pushState('FLOATING_NOTE_ID'); return "AS"; }
+<FLOATING_NOTE>["]                  /**/
+<FLOATING_NOTE>[^"]*                { /* console.log('Floating note text: ', yytext); */ return "NOTE_TEXT"; }
+<FLOATING_NOTE_ID>[^\n]*            { this.popState(); /* console.log('Floating note ID', yytext);*/ return "ID"; }
+<NOTE_ID>\s*[^:\n\s\-]+             { this.popState(); this.pushState('NOTE_TEXT'); /*console.log('Got ID for note', yytext);*/ return 'ID'; }
+<NOTE_TEXT>\s*":"[^:\n;]+           { this.popState(); /* console.log('Got NOTE_TEXT for note',yytext);*/yytext = yytext.substr(2).trim(); return 'NOTE_TEXT'; }
+<NOTE_TEXT>[\s\S]*?"end note"       { this.popState(); /* console.log('Got NOTE_TEXT for note',yytext);*/yytext = yytext.slice(0,-8).trim(); return 'NOTE_TEXT'; }
 
-"stateDiagram"\s+                   { /*console.log('Got state diagram', yytext,'#');*/return 'SD'; }
-"stateDiagram-v2"\s+                   { /*console.log('Got state diagram', yytext,'#');*/return 'SD'; }
-"hide empty description"    { /*console.log('HIDE_EMPTY', yytext,'#');*/return 'HIDE_EMPTY'; }
-<INITIAL,struct>"[*]"                   { /*console.log('EDGE_STATE=',yytext);*/ return 'EDGE_STATE';}
-<INITIAL,struct>[^:\n\s\-\{]+                { /*console.log('=>ID=',yytext);*/ return 'ID';}
-// <INITIAL,struct>\s*":"[^\+\->:\n;]+      { yytext = yytext.trim(); /*console.log('Descr = ', yytext);*/ return 'DESCR'; }
-<INITIAL,struct>\s*":"[^:\n;]+      { yytext = yytext.trim(); /*console.log('Descr = ', yytext);*/ return 'DESCR'; }
+"stateDiagram"\s+                   { /* console.log('Got state diagram', yytext,'#'); */ return 'SD'; }
+"stateDiagram-v2"\s+                { /* console.log('Got state diagram', yytext,'#'); */ return 'SD'; }
+
+"hide empty description"      { /* console.log('HIDE_EMPTY', yytext,'#'); */ return 'HIDE_EMPTY'; }
+
+<INITIAL,struct>"[*]"                   { /* console.log('EDGE_STATE=',yytext); */ return 'EDGE_STATE'; }
+<INITIAL,struct>[^:\n\s\-\{]+           { /* console.log('=>ID=',yytext); */ return 'ID'; }
+// <INITIAL,struct>\s*":"[^\+\->:\n;]+  { yytext = yytext.trim(); /* console.log('Descr = ', yytext); */ return 'DESCR'; }
+<INITIAL,struct>\s*":"[^:\n;]+          { yytext = yytext.trim(); /* console.log('Descr = ', yytext); */ return 'DESCR'; }
 
 <INITIAL,struct>"-->"             return '-->';
 <struct>"--"                      return 'CONCURRENT';
@@ -152,7 +157,6 @@ accDescr\s*"{"\s*                                { this.begin("acc_descr_multili
 start
 	: SPACE start
 	| NL start
-	| directive start
 	| SD document { /* console.log('--> Root document', $2); */   yy.setRootDoc($2); return $2; }
 	;
 
@@ -175,6 +179,7 @@ line
 
 statement
 	: classDefStatement
+    | styleStatement
     | cssClassStatement
 	| idStatement { /* console.log('got id', $1); */
             $$=$1;
@@ -201,7 +206,7 @@ statement
     | COMPOSIT_STATE
     | COMPOSIT_STATE STRUCT_START document STRUCT_STOP
     {
-        /* console.log('Adding document for state without id ', $1); */
+        // console.log('Adding document for state without id ', $1);
         $$={ stmt: 'state', id: $1, type: 'default', description: '', doc: $3 }
     }
     | STATE_DESCR AS ID {
@@ -217,7 +222,7 @@ statement
     }
     | STATE_DESCR AS ID STRUCT_START document STRUCT_STOP
     {
-         /*  console.log('Adding document for state with id zxzx', $3, $4, yy.getDirection());  yy.addDocument($3);*/
+         // console.log('state with id ', $3,' document = ', $5, );
          $$={ stmt: 'state', id: $3, type: 'default', description: $1, doc: $5 }
     }
     | FORK {
@@ -238,7 +243,6 @@ statement
         $$={ stmt: 'state', id: $3.trim(), note:{position: $2.trim(), text: $4.trim()}};
     }
     | note NOTE_TEXT AS ID
-  	| directive
     | direction
     | acc_title acc_title_value  { $$=$2.trim();yy.setAccTitle($$); }
     | acc_descr acc_descr_value  { $$=$2.trim();yy.setAccDescription($$); }
@@ -254,6 +258,12 @@ classDefStatement
         }
     ;
 
+styleStatement
+    : style STYLE_IDS STYLEDEF_STYLEOPTS {
+        $$ = { stmt: 'style', id: $2.trim(), styleClass: $3.trim() };
+        }
+    ;
+
 cssClassStatement
     : class CLASSENTITY_IDS STYLECLASS {
         //console.log('apply class: id(s): ',$2, '  style class: ', $3);
@@ -261,10 +271,6 @@ cssClassStatement
         }
     ;
 
-directive
-    : openDirective typeDirective closeDirective
-    | openDirective typeDirective ':' argDirective closeDirective
-    ;
 direction
     : direction_tb
     { yy.setDirection('TB');$$={stmt:'dir', value:'TB'};}
@@ -304,21 +310,5 @@ notePosition
     : left_of
     | right_of
     ;
-
-openDirective
-  : open_directive { yy.parseDirective('%%{', 'open_directive'); }
-  ;
-
-typeDirective
-  : type_directive { yy.parseDirective($1, 'type_directive'); }
-  ;
-
-argDirective
-  : arg_directive { $1 = $1.trim().replace(/'/g, '"'); yy.parseDirective($1, 'arg_directive'); }
-  ;
-
-closeDirective
-  : close_directive { yy.parseDirective('}%%', 'close_directive', 'state'); }
-  ;
 
 %%
